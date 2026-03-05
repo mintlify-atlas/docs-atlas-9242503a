@@ -77,31 +77,35 @@ Splat works best with Python 3.8 or higher for optimal compatibility with all de
   </Step>
   
   <Step title="Set Up Groq API Key">
-    Splat requires a Groq API key for AI-powered debugging. Set it as an environment variable:
+    Splat requires a Groq API key for AI-powered debugging. Set it as an environment variable named `API`:
     
     **Linux/macOS:**
     ```bash
-    export GROQ_API_KEY="your-api-key-here"
+    export API="your-api-key-here"
     ```
     
     **Windows (Command Prompt):**
     ```cmd
-    set GROQ_API_KEY=your-api-key-here
+    set API=your-api-key-here
     ```
     
     **Windows (PowerShell):**
     ```powershell
-    $env:GROQ_API_KEY="your-api-key-here"
+    $env:API="your-api-key-here"
     ```
     
     <Info>
     For persistent configuration, add the export command to your `~/.bashrc`, `~/.zshrc`, or create a `.env` file in your project directory.
     </Info>
     
-    **Using .env file:**
+    **Using .env file (Recommended):**
     ```bash .env
-    GROQ_API_KEY=your-api-key-here
+    API=your-api-key-here
     ```
+    
+    <Note>
+    The environment variable must be named exactly `API` (not `GROQ_API_KEY` or `API_KEY`) as this is what Splat's source code expects.
+    </Note>
   </Step>
   
   <Step title="Verify Installation">
@@ -196,7 +200,7 @@ This script installs tmux and creates a virtual environment named `zapenv`. Acti
   <Accordion title="Groq API authentication failed">
     Verify your API key is set correctly:
     ```bash
-    echo $GROQ_API_KEY
+    echo $API
     ```
     Get a new key at [console.groq.com](https://console.groq.com/)
   </Accordion>

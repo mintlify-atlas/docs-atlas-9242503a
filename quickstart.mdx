@@ -24,13 +24,17 @@ Before starting, make sure you've completed the [installation](/installation) st
   
   <Step title="Confirm Groq API key is set">
     ```bash
-    echo $GROQ_API_KEY
+    echo $API
     ```
     
     This should display your API key. If empty, set it:
     ```bash
-    export GROQ_API_KEY="your-api-key-here"
+    export API="your-api-key-here"
     ```
+    
+    <Info>
+    The environment variable must be named `API` - see [Configuration](/usage/configuration) for details.
+    </Info>
   </Step>
   
   <Step title="Navigate to your Python project">

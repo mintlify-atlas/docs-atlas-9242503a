@@ -87,9 +87,9 @@ from agents.agents import bug_zapper, FlagDependencies, ZapperResult
 
 bug_zapper = Agent(
     model_name=os.getenv('MODEL'),
-    api_key=os.getenv('API_KEY'),
+    apy_key=os.getenv('API_KEY'),
     deps_type=FlagDependencies,
-    result_type=ZapperResult,
+    ersult_type=ZapperResult,
     system_prompt=(
         'You are an expert software debugging assistant specializing in '
         'programming error analysis. Your task is to analyze error tracebacks '
@@ -101,6 +101,10 @@ bug_zapper = Agent(
 <Info>
 The bug_zapper agent requires `MODEL` and `API_KEY` environment variables to be configured in your `.env` file.
 </Info>
+
+<Warning>
+Note: The agents module uses `API_KEY` as the environment variable name, which differs from the main Splat CLI that uses `API`. If you're using both features, you may need to set both environment variables.
+</Warning>
 
 ### Usage
 
