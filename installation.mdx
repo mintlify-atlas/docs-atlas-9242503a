@@ -1,0 +1,209 @@
+---
+title: 'Installation'
+description: 'Complete guide to installing Splat and setting up your debugging environment'
+---
+
+## Prerequisites
+
+Before installing Splat, ensure you have the following:
+
+- **Python 3.7+** installed on your system
+- **pip** package manager
+- **Node.js and npm** (for repomix dependency)
+- A **Groq API key** ([get one free at groq.com](https://groq.com/))
+
+<Note>
+Splat works best with Python 3.8 or higher for optimal compatibility with all dependencies.
+</Note>
+
+## Installation Steps
+
+<Steps>
+  <Step title="Install Splat via pip">
+    Install Splat and its core dependencies:
+    
+    ```bash
+    pip install splat
+    ```
+    
+    Or install from source:
+    
+    ```bash
+    git clone <repository-url>
+    cd splat
+    pip install -e .
+    ```
+  </Step>
+  
+  <Step title="Install Python Dependencies">
+    Splat requires several Python packages. Install them using:
+    
+    ```bash
+    pip install click repopack setuptools groq fastapi uvicorn python-dotenv prompt_toolkit requests black pydantic_ai pydantic zmq
+    ```
+    
+    Or use the requirements file:
+    
+    ```bash
+    pip install -r requirements.txt
+    ```
+    
+    <Accordion title="View all dependencies">
+      - **click**: CLI framework
+      - **repopack**: Repository context packing
+      - **groq**: Groq AI API client
+      - **fastapi**: API framework (for advanced features)
+      - **uvicorn**: ASGI server
+      - **python-dotenv**: Environment variable management
+      - **prompt_toolkit**: Interactive CLI components
+      - **requests**: HTTP library
+      - **black**: Code formatting
+      - **pydantic_ai**: AI integration utilities
+      - **pydantic**: Data validation
+      - **zmq**: Zero MQ messaging
+    </Accordion>
+  </Step>
+  
+  <Step title="Install repomix (Node.js dependency)">
+    Splat uses repomix for repository context analysis:
+    
+    ```bash
+    npm install -g repomix
+    ```
+    
+    <Warning>
+    Make sure Node.js and npm are installed before running this command. Install from [nodejs.org](https://nodejs.org/) if needed.
+    </Warning>
+  </Step>
+  
+  <Step title="Set Up Groq API Key">
+    Splat requires a Groq API key for AI-powered debugging. Set it as an environment variable:
+    
+    **Linux/macOS:**
+    ```bash
+    export GROQ_API_KEY="your-api-key-here"
+    ```
+    
+    **Windows (Command Prompt):**
+    ```cmd
+    set GROQ_API_KEY=your-api-key-here
+    ```
+    
+    **Windows (PowerShell):**
+    ```powershell
+    $env:GROQ_API_KEY="your-api-key-here"
+    ```
+    
+    <Info>
+    For persistent configuration, add the export command to your `~/.bashrc`, `~/.zshrc`, or create a `.env` file in your project directory.
+    </Info>
+    
+    **Using .env file:**
+    ```bash .env
+    GROQ_API_KEY=your-api-key-here
+    ```
+  </Step>
+  
+  <Step title="Verify Installation">
+    Check that Splat is installed correctly:
+    
+    ```bash
+    splat --help
+    ```
+    
+    You should see the Splat command help output.
+  </Step>
+</Steps>
+
+## Optional: Setup Script (macOS)
+
+For macOS users, you can use the provided setup script for automated installation:
+
+```bash setup.sh
+set -e
+echo "🚀 Running some setup commands..."
+
+echo "Installing tmux!"
+brew install tmux
+
+echo "Creating virtual environment..."
+python3 -m venv zapenv
+
+echo "Downloading dependencies..."
+pip install -r requirements.txt
+
+echo "Installing repomix..."
+npm install -g repomix
+
+echo "Setup complete!"
+```
+
+Run it with:
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+<Note>
+This script installs tmux and creates a virtual environment named `zapenv`. Activate it with `source zapenv/bin/activate` before using Splat.
+</Note>
+
+## Platform-Specific Notes
+
+### macOS
+- Use Homebrew for tmux: `brew install tmux`
+- Python 3 is usually available via Homebrew
+
+### Linux
+- Install Python 3 via your package manager (apt, yum, etc.)
+- Most dependencies are available through pip
+
+### Windows
+- Install Python from [python.org](https://python.org)
+- Use WSL (Windows Subsystem for Linux) for the best experience
+- Some dependencies may require Visual C++ build tools
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Command not found: splat">
+    Ensure pip's bin directory is in your PATH. Try:
+    ```bash
+    python -m splat
+    ```
+    Or reinstall with:
+    ```bash
+    pip install --user splat
+    ```
+  </Accordion>
+  
+  <Accordion title="ImportError: No module named 'click'">
+    Dependencies weren't installed. Run:
+    ```bash
+    pip install -r requirements.txt
+    ```
+  </Accordion>
+  
+  <Accordion title="repomix command not found">
+    npm global packages may not be in PATH. Try:
+    ```bash
+    npm config get prefix
+    ```
+    And add the bin directory to your PATH.
+  </Accordion>
+  
+  <Accordion title="Groq API authentication failed">
+    Verify your API key is set correctly:
+    ```bash
+    echo $GROQ_API_KEY
+    ```
+    Get a new key at [console.groq.com](https://console.groq.com/)
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<Card title="Quick Start" icon="rocket" href="/quickstart">
+  Now that Splat is installed, learn how to use it for your first debug session
+</Card>

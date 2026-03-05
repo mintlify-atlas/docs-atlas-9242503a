@@ -1,0 +1,575 @@
+---
+title: "Usage Examples"
+description: "Real-world debugging scenarios showing splat in action for common Python errors"
+---
+
+## Overview
+
+This page demonstrates how splat handles various types of Python errors in real-world scenarios. Each example shows the complete workflow from error to solution.
+
+## Example 1: Syntax Error - Unclosed Parenthesis
+
+### The Problem
+
+You have a simple Python script with a syntax error:
+
+```python test.py
+print("Starting the application...")
+print("Hello, World!"
+print("Application finished.")
+```
+
+### Running Splat
+
+```bash
+splat squash "python3 test.py"
+```
+
+<Accordion title="View Terminal Output">
+```
+File "test.py", line 2
+    print("Hello, World!"
+                          ^
+SyntaxError: '(' was never closed
+
+Analyzing error with AI...
+```
+</Accordion>
+
+### Splat's Response
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "test.py",
+    "line_number": "2"
+  },
+  "what": {
+    "error_type": "SyntaxError",
+    "description": "Opening parenthesis on line 2 was never closed. Python expects a closing parenthesis before the line ends."
+  },
+  "how": {
+    "error_origination": "2",
+    "suggested_code_solution": "print(\"Hello, World!\")"
+  }
+}
+```
+
+### The Fix
+
+Update line 2:
+
+```python test.py
+print("Starting the application...")
+print("Hello, World!")  # Added closing parenthesis
+print("Application finished.")
+```
+
+---
+
+## Example 2: Name Error - Undefined Variable
+
+### The Problem
+
+A script references a variable that doesn't exist:
+
+```python calculator.py
+def calculate_total(items):
+    total = 0
+    for item in items:
+        total += item.price
+    return totla  # Typo: 'totla' instead of 'total'
+
+result = calculate_total([{"price": 10}, {"price": 20}])
+print(f"Total: {result}")
+```
+
+### Running Splat
+
+```bash
+splat squash "python3 calculator.py"
+```
+
+<Accordion title="View Error Traceback">
+```
+Traceback (most recent call last):
+  File "calculator.py", line 7, in <module>
+    result = calculate_total([{"price": 10}, {"price": 20}])
+  File "calculator.py", line 5, in calculate_total
+    return totla
+NameError: name 'totla' is not defined. Did you mean: 'total'?
+```
+</Accordion>
+
+### Splat's Response
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "calculator.py",
+    "line_number": "5"
+  },
+  "what": {
+    "error_type": "NameError",
+    "description": "Variable 'totla' is not defined. This appears to be a typo of the 'total' variable defined on line 2."
+  },
+  "how": {
+    "error_origination": "5",
+    "suggested_code_solution": "return total"
+  }
+}
+```
+
+---
+
+## Example 3: Import Error (Basic Mode)
+
+### The Problem
+
+Your project has a missing module:
+
+```python main.py
+from utils import helper
+from config import settings
+
+def main():
+    result = helper.process_data(settings.DATA_PATH)
+    print(result)
+
+if __name__ == "__main__":
+    main()
+```
+
+### Running Splat (Basic Mode)
+
+```bash
+splat squash "python3 main.py"
+```
+
+<Accordion title="View Error Output">
+```
+Traceback (most recent call last):
+  File "main.py", line 2, in <module>
+    from config import settings
+ModuleNotFoundError: No module named 'config'
+```
+</Accordion>
+
+### Splat's Response
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "main.py",
+    "line_number": "2"
+  },
+  "what": {
+    "error_type": "ModuleNotFoundError",
+    "description": "Python cannot find a module named 'config'. The file 'config.py' may not exist in the project directory or is not in the Python path."
+  },
+  "how": {
+    "error_origination": "2",
+    "suggested_code_solution": "# Create config.py in the same directory:\n# config.py\nDATA_PATH = './data'"
+  }
+}
+```
+
+---
+
+## Example 4: Type Error with Relational Mode
+
+### The Problem
+
+A complex project with multiple files has a type mismatch:
+
+**models.py**
+```python
+class User:
+    def __init__(self, user_id, name):
+        self.user_id = user_id
+        self.name = name
+    
+    def get_id(self):
+        return self.user_id
+```
+
+**database.py**
+```python
+from models import User
+
+def fetch_user(user_id):
+    # Simulating database fetch
+    return {"id": user_id, "name": "John Doe"}  # Returns dict, not User object
+```
+
+**services.py**
+```python
+from database import fetch_user
+
+def get_user_name(user_id):
+    user = fetch_user(user_id)
+    return user.get_id()  # Error: dict has no method 'get_id'
+```
+
+**main.py**
+```python
+from services import get_user_name
+
+if __name__ == "__main__":
+    name = get_user_name(123)
+    print(f"User: {name}")
+```
+
+### Running Splat (Basic Mode)
+
+```bash
+splat squash "python3 main.py"
+```
+
+Basic mode might not have enough context to understand the issue fully.
+
+### Running Splat (Relational Mode)
+
+```bash
+splat squash -r "python3 main.py"
+```
+
+<Accordion title="View Error Traceback">
+```
+Traceback (most recent call last):
+  File "main.py", line 4, in <module>
+    name = get_user_name(123)
+  File "services.py", line 5, in get_user_name
+    return user.get_id()
+AttributeError: 'dict' object has no attribute 'get_id'
+```
+</Accordion>
+
+### Splat's Response (with -r flag)
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "services.py",
+    "line_number": "5"
+  },
+  "what": {
+    "error_type": "AttributeError",
+    "description": "The fetch_user() function in database.py returns a dictionary, but services.py expects a User object with a get_id() method. There's a type mismatch between what database.py returns and what services.py expects."
+  },
+  "how": {
+    "error_origination": "5",
+    "suggested_code_solution": "# Option 1: Fix database.py to return User object:\nfrom models import User\n\ndef fetch_user(user_id):\n    data = {\"id\": user_id, \"name\": \"John Doe\"}\n    return User(data['id'], data['name'])\n\n# Option 2: Fix services.py to handle dict:\ndef get_user_name(user_id):\n    user = fetch_user(user_id)\n    return user['id'] if isinstance(user, dict) else user.get_id()"
+  }
+}
+```
+
+<Note>
+With the `-r` flag, splat analyzed all four files and understood the complete data flow, enabling it to identify the type mismatch between `database.py` and `services.py`.
+</Note>
+
+---
+
+## Example 5: Index Error
+
+### The Problem
+
+```python process_data.py
+def get_first_three(items):
+    return [items[0], items[1], items[2]]
+
+data = ["apple", "banana"]
+result = get_first_three(data)
+print(result)
+```
+
+### Running Splat
+
+```bash
+splat squash "python3 process_data.py"
+```
+
+<Accordion title="View Error Output">
+```
+Traceback (most recent call last):
+  File "process_data.py", line 5, in <module>
+    result = get_first_three(data)
+  File "process_data.py", line 2, in get_first_three
+    return [items[0], items[1], items[2]]
+IndexError: list index out of range
+```
+</Accordion>
+
+### Splat's Response
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "process_data.py",
+    "line_number": "2"
+  },
+  "what": {
+    "error_type": "IndexError",
+    "description": "The function tries to access items[2], but the list only has 2 elements (indices 0 and 1). Accessing index 2 is out of range."
+  },
+  "how": {
+    "error_origination": "2",
+    "suggested_code_solution": "def get_first_three(items):\n    return items[:3]  # Safely returns up to 3 items without raising IndexError"
+  }
+}
+```
+
+---
+
+## Example 6: Attribute Error with Class
+
+### The Problem
+
+```python vehicle.py
+class Car:
+    def __init__(self, make, model):
+        self.make = make
+        self.model = model
+    
+    def get_info(self):
+        return f"{self.make} {self.model}"
+
+my_car = Car("Toyota", "Camry")
+print(my_car.get_details())  # Method doesn't exist
+```
+
+### Running Splat
+
+```bash
+splat squash "python3 vehicle.py"
+```
+
+<Accordion title="View Error Output">
+```
+Traceback (most recent call last):
+  File "vehicle.py", line 10, in <module>
+    print(my_car.get_details())
+AttributeError: 'Car' object has no attribute 'get_details'
+```
+</Accordion>
+
+### Splat's Response
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "vehicle.py",
+    "line_number": "10"
+  },
+  "what": {
+    "error_type": "AttributeError",
+    "description": "The Car class does not have a method named 'get_details'. The available method is 'get_info'."
+  },
+  "how": {
+    "error_origination": "10",
+    "suggested_code_solution": "print(my_car.get_info())  # Use the correct method name"
+  }
+}
+```
+
+---
+
+## Example 7: Division by Zero
+
+### The Problem
+
+```python stats.py
+def calculate_average(numbers):
+    total = sum(numbers)
+    count = len(numbers)
+    return total / count
+
+data = []
+average = calculate_average(data)
+print(f"Average: {average}")
+```
+
+### Running Splat
+
+```bash
+splat squash "python3 stats.py"
+```
+
+<Accordion title="View Error Output">
+```
+Traceback (most recent call last):
+  File "stats.py", line 7, in <module>
+    average = calculate_average(data)
+  File "stats.py", line 4, in calculate_average
+    return total / count
+ZeroDivisionError: division by zero
+```
+</Accordion>
+
+### Splat's Response
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "stats.py",
+    "line_number": "4"
+  },
+  "what": {
+    "error_type": "ZeroDivisionError",
+    "description": "Cannot divide by zero. The function is called with an empty list, so len(numbers) is 0, causing division by zero."
+  },
+  "how": {
+    "error_origination": "4",
+    "suggested_code_solution": "def calculate_average(numbers):\n    if not numbers:\n        return 0  # or raise ValueError('Cannot calculate average of empty list')\n    total = sum(numbers)\n    count = len(numbers)\n    return total / count"
+  }
+}
+```
+
+---
+
+## Example 8: Key Error in Dictionary
+
+### The Problem
+
+```python config_reader.py
+def get_database_config():
+    config = {
+        "host": "localhost",
+        "port": 5432,
+        "database": "mydb"
+    }
+    return config
+
+config = get_database_config()
+print(f"Username: {config['username']}")
+```
+
+### Running Splat
+
+```bash
+splat squash "python3 config_reader.py"
+```
+
+<Accordion title="View Error Output">
+```
+Traceback (most recent call last):
+  File "config_reader.py", line 10, in <module>
+    print(f"Username: {config['username']}")
+KeyError: 'username'
+```
+</Accordion>
+
+### Splat's Response
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "config_reader.py",
+    "line_number": "10"
+  },
+  "what": {
+    "error_type": "KeyError",
+    "description": "The dictionary does not contain a key named 'username'. The available keys are: 'host', 'port', 'database'."
+  },
+  "how": {
+    "error_origination": "10",
+    "suggested_code_solution": "# Option 1: Add the key to the dictionary\nconfig['username'] = 'admin'\n\n# Option 2: Use .get() with default\nprint(f\"Username: {config.get('username', 'default_user')}\")\n\n# Option 3: Check if key exists\nif 'username' in config:\n    print(f\"Username: {config['username']}\")\nelse:\n    print(\"Username not configured\")"
+  }
+}
+```
+
+---
+
+## Comparison: Basic vs Relational Mode
+
+Here's a side-by-side comparison showing when to use each mode:
+
+<Tabs>
+  <Tab title="Simple Error (Basic Mode)">
+    ### Scenario: Single File Syntax Error
+    
+    ```python script.py
+    def greet(name):
+        print(f"Hello, {name}"  # Missing closing parenthesis
+    
+    greet("World")
+    ```
+    
+    **Command:**
+    ```bash
+    splat squash "python3 script.py"
+    ```
+    
+    **Result:** Fast response, accurate fix. Basic mode is sufficient.
+    
+    ✅ **Use basic mode** - Error is isolated to one file
+  </Tab>
+  
+  <Tab title="Complex Error (Relational Mode)">
+    ### Scenario: Multi-File Import Issue
+    
+    **Project Structure:**
+    ```
+    project/
+    ├── main.py (imports services)
+    ├── services.py (imports models, database)
+    ├── models.py (imports validators)
+    ├── database.py (imports config)
+    ├── validators.py
+    └── config.py
+    ```
+    
+    **Error:** Type mismatch between `database.py` and `services.py`
+    
+    **Command:**
+    ```bash
+    splat squash -r "python3 main.py"
+    ```
+    
+    **Result:** Splat analyzes all 6 files, understands the complete data flow, and identifies the root cause.
+    
+    ✅ **Use relational mode** - Error involves multiple interconnected files
+  </Tab>
+</Tabs>
+
+## Tips for Effective Debugging with Splat
+
+<CardGroup cols={2}>
+  <Card title="Start Simple" icon="play">
+    Try basic mode first. Only use `-r` if the solution isn't clear.
+  </Card>
+  
+  <Card title="Review Context" icon="eye">
+    Always review the AI's suggested solution before applying it.
+  </Card>
+  
+  <Card title="Check Imports" icon="file-import">
+    For import errors, use relational mode to see the full dependency graph.
+  </Card>
+  
+  <Card title="Format After" icon="code">
+    Run your code formatter after applying splat's suggestions.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Basic Usage" icon="book" href="/usage/basic-usage">
+    Review the fundamentals of using splat
+  </Card>
+  <Card title="Relational Mode" icon="diagram-project" href="/usage/relational-mode">
+    Deep dive into the `-r` flag capabilities
+  </Card>
+  <Card title="Configuration" icon="gear" href="/usage/configuration">
+    Set up your environment and API keys
+  </Card>
+</CardGroup>

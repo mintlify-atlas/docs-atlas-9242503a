@@ -1,0 +1,164 @@
+---
+title: "Basic Usage"
+description: "Learn how to use splat to debug Python errors quickly with AI-powered analysis"
+---
+
+## Overview
+
+Splat is an AI-powered debugging tool that captures runtime and compile errors, analyzes your code context, and provides instant solutions. It uses [Groq](https://groq.com/) for extremely fast inference while maintaining high accuracy.
+
+## Command Structure
+
+The basic syntax for splat is straightforward:
+
+```bash
+splat squash "<your-command>"
+```
+
+<Info>
+Splat wraps around your normal Python execution command. Simply prefix your usual command with `splat squash`.
+</Info>
+
+## Basic Workflow
+
+<Steps>
+  <Step title="Run your command with splat">
+    Instead of running `python3 script.py`, use:
+    
+    ```bash
+    splat squash "python3 script.py"
+    ```
+  </Step>
+  
+  <Step title="Error capture">
+    Splat automatically captures any errors that occur during execution, including:
+    - Syntax errors
+    - Runtime errors
+    - Import errors
+    - Type errors
+  </Step>
+  
+  <Step title="Context gathering">
+    The tool parses the error traceback and collects the content of all files mentioned in the stack trace.
+  </Step>
+  
+  <Step title="AI analysis">
+    Splat sends the error information and file context to Groq's AI model for analysis.
+  </Step>
+  
+  <Step title="Get solution">
+    Receive a structured response containing:
+    - **Where**: The exact file and line number of the error
+    - **What**: Error type and description
+    - **How**: Suggested code fix
+  </Step>
+</Steps>
+
+## How It Works
+
+When you run splat in basic mode (without flags), here's what happens under the hood:
+
+1. **Command Execution**: Splat runs your command using `subprocess.run()` and captures both stdout and stderr
+2. **Error Detection**: If the command fails (non-zero exit code), splat captures the error traceback
+3. **Stack Parsing**: The error stack is parsed to extract all Python file paths mentioned in the trace
+4. **File Collection**: Content from all files in the error stack is collected
+5. **AI Processing**: The error message and file contents are sent to Groq's LLM for analysis
+6. **Solution Delivery**: A structured JSON response is returned with diagnostic information and suggested fixes
+
+## Response Format
+
+Splat returns a structured JSON response:
+
+```json
+{
+  "where": {
+    "repository_path": "/absolute/path/to/repo",
+    "file_name": "script.py",
+    "line_number": "42"
+  },
+  "what": {
+    "error_type": "SyntaxError",
+    "description": "Unclosed parenthesis in print statement"
+  },
+  "how": {
+    "error_origination": "42",
+    "suggested_code_solution": "print(hello)"
+  }
+}
+```
+
+## Example: Fixing a Syntax Error
+
+Let's say you have a file `test.py` with this error:
+
+```python test.py
+print("Hello, World!")
+print(hello  # Missing closing parenthesis
+```
+
+Run splat:
+
+```bash
+splat squash "python3 test.py"
+```
+
+You'll receive:
+
+```json
+{
+  "where": {
+    "repository_path": "/Users/yourname/project",
+    "file_name": "test.py",
+    "line_number": "2"
+  },
+  "what": {
+    "error_type": "SyntaxError",
+    "description": "'(' was never closed"
+  },
+  "how": {
+    "error_origination": "2",
+    "suggested_code_solution": "print(hello)"
+  }
+}
+```
+
+## Supported Error Types
+
+Splat can analyze and provide solutions for:
+
+- **SyntaxError**: Incorrect Python syntax
+- **NameError**: Undefined variables or functions
+- **TypeError**: Type mismatches and incorrect operations
+- **AttributeError**: Invalid attribute access
+- **ImportError/ModuleNotFoundError**: Missing or incorrect imports
+- **IndexError**: List/array index out of range
+- **KeyError**: Dictionary key not found
+- **ValueError**: Invalid value passed to function
+- And many more...
+
+## When to Use Basic Mode
+
+Use basic mode (without the `-r` flag) when:
+
+- You have a simple, isolated error
+- The error is contained within a single file or small module
+- You want the fastest possible response time
+- Your project structure is straightforward
+
+<Warning>
+Basic mode only analyzes files directly mentioned in the error traceback. For errors involving complex dependencies or imports, use [Relational Mode](/usage/relational-mode) with the `-r` flag.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Relational Mode" icon="diagram-project" href="/usage/relational-mode">
+    Learn how to use the `-r` flag for deeper context analysis
+  </Card>
+  <Card title="Configuration" icon="gear" href="/usage/configuration">
+    Set up your API key and customize splat behavior
+  </Card>
+  <Card title="Examples" icon="code" href="/usage/examples">
+    Explore real-world debugging scenarios
+  </Card>
+</CardGroup>

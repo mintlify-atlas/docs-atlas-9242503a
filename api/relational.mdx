@@ -1,0 +1,131 @@
+---
+title: "Relational Error Parsing"
+description: "Core function for executing commands, capturing errors, and building dependency graphs"
+---
+
+## Overview
+
+The `relational_error_parsing_function` is the main entry point for Splat's error analysis. It executes a Python command, captures any errors that occur, parses the error stack trace, and optionally builds a dependency graph of related files.
+
+## Function Signature
+
+```python
+def relational_error_parsing_function(
+    entrypoint: List[str], 
+    flag: str = ""
+) -> Tuple[str, str, str]
+```
+
+## Parameters
+
+<ParamField path="entrypoint" type="List[str]" required>
+  The command to execute as a list of strings. Typically in the format `['python3', 'script.py']`.
+  
+  **Example:** `['python3', 'test.py']`
+</ParamField>
+
+<ParamField path="flag" type="str" default="">
+  Optional flag to control dependency graph behavior:
+  - `""` (empty): Only includes files directly mentioned in the error stack
+  - `"-r"`: Recursively includes all related files through import relationships
+</ParamField>
+
+## Return Value
+
+Returns a tuple of three strings:
+
+<ResponseField name="traceback" type="str">
+  The complete error traceback captured from stderr
+</ResponseField>
+
+<ResponseField name="error_information" type="str">
+  String representation of the CalledProcessError
+</ResponseField>
+
+<ResponseField name="context" type="str">
+  Collected file contents from error stack and optionally related files, formatted by `run_mock_repopack`
+</ResponseField>
+
+<Note>
+  If the command executes successfully without errors, all three return values will be empty strings `("", "", "")`.
+</Note>
+
+## How It Works
+
+1. **Execute Command**: Runs the provided entrypoint using `subprocess.run()` with error capture enabled
+2. **Catch Errors**: Captures any `CalledProcessError` exceptions (intentionally designed to always process errors)
+3. **Parse Stack**: Extracts file paths from the error traceback using `parse_error_stack()`
+4. **Build Context**: 
+   - Without `-r` flag: Collects only files mentioned in the error
+   - With `-r` flag: Builds a dependency graph and collects all transitively related files
+5. **Package Results**: Returns traceback, error info, and file contents as context
+
+## Usage Examples
+
+### Basic Usage (Error Stack Only)
+
+```python
+from relational import relational_error_parsing_function
+
+# Run a script and capture errors from files in the stack trace
+traceback, error_info, context = relational_error_parsing_function(
+    ['python3', 'my_script.py']
+)
+
+print(f"Error occurred: {error_info}")
+print(f"Context includes files from error stack")
+```
+
+### Recursive Mode (With Dependencies)
+
+```python
+# Include all related files through import relationships
+traceback, error_info, context = relational_error_parsing_function(
+    ['python3', 'my_script.py'],
+    flag='-r'
+)
+
+print(f"Traceback:\n{traceback}")
+print(f"Context includes error files + all imported dependencies")
+```
+
+### Complete Example
+
+```python
+import os
+from relational import relational_error_parsing_function
+
+# Execute a failing script with recursive dependency tracking
+entrypoint = ['python3', 'test.py']
+traceback, error_info, context = relational_error_parsing_function(
+    entrypoint, 
+    '-r'
+)
+
+if traceback:
+    print("Error Analysis")
+    print("="*50)
+    print(f"Traceback:\n{traceback}\n")
+    print(f"Error: {error_info}\n")
+    print(f"Related Files Context:\n{context}")
+else:
+    print("No errors occurred")
+```
+
+## Dependencies
+
+This function relies on several utility functions from `utils.utils`:
+
+- `parse_error_stack()`: Extracts file paths from error messages
+- `build_adjacency_list()`: Creates dependency graph from Python imports
+- `get_nth_related_files()`: Traverses graph to find all related files
+- `run_mock_repopack()`: Collects and formats file contents
+
+## Implementation Details
+
+The function uses `subprocess.run()` with these parameters:
+- `capture_output=True`: Captures both stdout and stderr
+- `check=True`: Raises CalledProcessError on non-zero exit codes
+- `text=True`: Returns output as strings rather than bytes
+
+The project root is determined using `os.getcwd()` at runtime.

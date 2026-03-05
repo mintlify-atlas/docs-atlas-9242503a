@@ -1,0 +1,206 @@
+---
+title: "splat squash"
+description: "AI-powered Python debugging command that analyzes runtime errors and provides intelligent fixes"
+---
+
+## Overview
+
+The `splat squash` command runs your Python application in a monitored environment, captures any errors that occur, and uses AI to analyze the error context and provide actionable debugging solutions.
+
+When an error occurs, splat:
+1. Captures the full error traceback
+2. Gathers contextual code from relevant files
+3. Analyzes the error using AI (powered by Groq)
+4. Returns structured debugging advice in JSON format
+
+## Syntax
+
+```bash
+splat squash [OPTIONS] <entrypoint>
+```
+
+## Parameters
+
+<ParamField path="entrypoint" type="string" required>
+  The command to run your Python application, exactly as you would normally execute it.
+  
+  **Examples:**
+  - `"python3 app.py"`
+  - `"python3 main.py"`
+  - `"python3 foo.py"`
+  
+  <Note>
+    The entrypoint must be quoted if it contains spaces or special characters.
+  </Note>
+</ParamField>
+
+<ParamField path="-r" type="flag" default="false">
+  Enable **relational mode** for enhanced context gathering.
+  
+  When enabled, splat builds a dependency graph and collects code from all files related to the error stack - not just the files directly mentioned in the traceback. This provides deeper context for more accurate AI analysis.
+  
+  **How it works:**
+  - Parses import statements to build an adjacency list of file dependencies
+  - Traverses the graph to find all Nth-degree connections to error files
+  - Includes related code in the AI context for better debugging
+  
+  <Warning>
+    Relational mode may increase processing time for large codebases but significantly improves debugging accuracy for complex dependency chains.
+  </Warning>
+</ParamField>
+
+## Usage Examples
+
+### Basic Error Analysis
+
+Run your application and let splat analyze any errors:
+
+```bash
+splat squash "python3 app.py"
+```
+
+This will:
+- Execute `python3 app.py` in a monitored subprocess
+- Capture any error tracebacks
+- Analyze only the files directly mentioned in the error stack
+- Return AI-generated debugging advice
+
+### Enhanced Analysis with Relational Mode
+
+For complex errors involving multiple files:
+
+```bash
+splat squash -r "python3 main.py"
+```
+
+This enables relational dependency tracking to gather context from imported modules and related files, providing more comprehensive debugging insights.
+
+### Debugging a Specific Script
+
+```bash
+splat squash "python3 scripts/data_processor.py"
+```
+
+## Output Format
+
+splat returns a structured JSON response with three main sections:
+
+```json
+{
+  "where": {
+    "repository_path": "/absolute/path/to/repository",
+    "file_name": "app.py",
+    "line_number": "42"
+  },
+  "what": {
+    "error_type": "NameError",
+    "description": "Concise explanation of what caused the error"
+  },
+  "how": {
+    "error_origination": "42",
+    "suggested_code_solution": "# Python code snippet to fix the error\nfixed_code_here()"
+  }
+}
+```
+
+### Response Fields
+
+**where** - Location information
+- `repository_path`: Absolute path to your project repository
+- `file_name`: Name of the file containing the error
+- `line_number`: Line number where the error occurred
+
+**what** - Error description
+- `error_type`: Specific Python exception type (e.g., NameError, SyntaxError, TypeError)
+- `description`: Clear explanation of what went wrong
+
+**how** - Solution guidance
+- `error_origination`: Line number where the error originated (may differ from where it was raised)
+- `suggested_code_solution`: Executable Python code snippet to resolve the issue
+
+## How It Works
+
+1. **Execution Monitoring**: Your application runs in a subprocess with output capture enabled
+2. **Error Detection**: If the process exits with an error, splat captures the full stderr traceback
+3. **Context Gathering**: 
+   - Parses the traceback to identify involved files
+   - In relational mode (`-r`), builds a dependency graph and collects related files
+   - Respects `.gitignore` to exclude sensitive files
+4. **AI Analysis**: Sends the error traceback and code context to Groq's LLM (llama3-70b-8192)
+5. **Structured Response**: Returns actionable debugging advice in JSON format
+
+## Exit Codes
+
+- **0**: No error occurred during execution
+- **Non-zero**: An error was captured and analyzed (matches the original process exit code)
+
+## Known Limitations
+
+<Warning>
+  splat has some current limitations to be aware of:
+</Warning>
+
+- **Code Formatting**: splat does not conform to project formatting configurations when suggesting code fixes. You may need to reformat the suggested code to match your style guide.
+
+- **Sub-module Entrypoints**: splat does not perform well with running sub-module entrypoints that do not originate in the root directory. Always run splat from your project root and use entrypoints relative to that location.
+
+- **File Launch Requirement**: Currently only supports files that can be launched from the root directory.
+
+## Git Integration
+
+splat is **git-aware** and respects your `.gitignore` configuration. When gathering code context:
+- Ignored files and directories are excluded from analysis
+- Sensitive information (API keys, credentials) remains protected
+- Only tracked or unignored files are sent to the AI model
+
+This ensures your debugging process doesn't leak sensitive data.
+
+## AI Model
+
+splat uses [Groq](https://groq.com/) for extremely fast inference with the **llama3-70b-8192** model, providing:
+- Near-instant debugging responses
+- High accuracy in error analysis
+- Structured JSON output for easy parsing
+
+<Note>
+  An API key for Groq is required. splat reads this from the `API` environment variable (typically via a `.env` file).
+</Note>
+
+## Best Practices
+
+1. **Always run from project root**: Ensures splat can properly resolve file paths and dependencies
+
+2. **Use relational mode for complex errors**: If your error involves imports or module interactions, the `-r` flag provides better context
+
+3. **Check .gitignore**: Verify sensitive files are properly ignored before running splat
+
+4. **Review suggested fixes**: Always review and test the AI-generated code before applying it to your codebase
+
+## Example Workflow
+
+```bash
+# Navigate to your project root
+cd /path/to/your/project
+
+# Run with relational mode for best results
+splat squash -r "python3 main.py"
+
+# Output will show structured debugging advice
+{
+  "where": {
+    "repository_path": "/path/to/your/project",
+    "file_name": "utils.py",
+    "line_number": "15"
+  },
+  "what": {
+    "error_type": "AttributeError",
+    "description": "Called method 'process_data' on None object - likely due to failed initialization"
+  },
+  "how": {
+    "error_origination": "12",
+    "suggested_code_solution": "if data_processor is not None:\n    data_processor.process_data()"
+  }
+}
+```
+
+Apply the suggested fix at `utils.py:15` and run your application again!

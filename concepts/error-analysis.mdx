@@ -1,0 +1,242 @@
+---
+title: "Error Analysis"
+description: "How Splat captures, parses, and analyzes Python error tracebacks"
+---
+
+## Overview
+
+Splat's error analysis system captures runtime errors from Python programs, parses their stack traces, and extracts relevant context for AI-powered debugging. The system runs commands in isolated subprocesses, captures stderr output, and intelligently identifies which files are involved in the error.
+
+## Architecture
+
+The error analysis flow involves three main components:
+
+1. **Command Execution** - Running Python scripts in subprocesses
+2. **Stack Trace Parsing** - Extracting file paths from error output
+3. **Context Collection** - Gathering file contents for analysis
+
+<Info>
+The error analysis system is designed to work with the `-r` flag for recursive dependency tracking, or without it for simpler error-only context.
+</Info>
+
+## Running Commands in Subprocesses
+
+Splat executes user commands through `subprocess.run()` to capture both stdout and stderr. The main entry point is the `relational_error_parsing_function`:
+
+```python relational.py
+def relational_error_parsing_function(entrypoint, flag: str = "") -> Tuple[str, str, str]:
+  try:
+    subprocess.run(entrypoint, capture_output=True, check=True, text=True)
+    return "", "", ""  # Return empty strings if no error occurs
+  except subprocess.CalledProcessError as error:
+    # Capture the error output to simulate the error stack
+    traceback: str = error.stderr if error.stderr else str(error)
+    error_information: str = str(error)
+    collected_traceback_files = parse_error_stack(traceback)
+    project_root = os.getcwd()
+    
+    if flag == '-r':
+      graph = build_adjacency_list(collected_traceback_files, project_root)
+      all_related_files = get_nth_related_files(collected_traceback_files, graph)
+      return traceback, error_information, run_mock_repopack(list(all_related_files))
+    else:
+      return traceback, error_information, run_mock_repopack(collected_traceback_files)
+```
+
+<Note>
+The function is designed to **always** catch errors - this is intentional. The try block will succeed only if no error occurs, but Splat's purpose is to analyze errors when they happen.
+</Note>
+
+### Key Parameters
+
+- **entrypoint** - A list representing the command to run (e.g., `['python3', 'test.py']`)
+- **flag** - Optional flag for behavior modification:
+  - `'-r'` - Recursive mode: includes all dependency files
+  - `''` - Basic mode: only includes files from the traceback
+
+### Return Values
+
+The function returns a tuple of three strings:
+
+1. **traceback** - The full stderr output containing the error stack trace
+2. **error_information** - The stringified error object
+3. **context** - Concatenated file contents from all relevant files
+
+## Parsing Error Stack Traces
+
+The `parse_error_stack` function extracts file paths from Python error messages using regex patterns:
+
+```python utils.py
+def parse_error_stack(error_info: str) -> List[str]:
+  """
+  Parse the error stack trace and return a list of all unique file paths involved.
+
+  Args:
+  error_info (str): The full error stack trace as a string.
+
+  Returns:
+  List[str]: A list of unique file paths involved in the error(s).
+  """
+  files = []
+  # This regex looks for file paths in various formats, including the command output
+  file_pattern = re.compile(r'(?:File "([^"]+)"|\b(\S+\.py)\b)')
+
+  # Process each line of the error_info
+  for line in error_info.split('\n'):
+    matches = file_pattern.findall(line)
+    for match in matches:
+      # The regex returns a tuple for each match, we take the non-empty string
+      file_path = next((m for m in match if m), None)
+      if file_path:
+        file_path = file_path.strip()
+        # Remove any quotes around the file path
+        file_path = file_path.strip("'\"")
+        if os.path.exists(file_path):
+          files.append(file_path)
+
+  return list(dict.fromkeys(files))
+```
+
+### Regex Pattern Breakdown
+
+The regex pattern `r'(?:File "([^"]+)"|\b(\S+\.py)\b)'` matches two formats:
+
+1. **Standard Python traceback format**: `File "/path/to/file.py"`
+2. **Bare .py files**: Any word boundary followed by non-whitespace characters ending in `.py`
+
+<Accordion title="Example Error Output">
+```
+Traceback (most recent call last):
+  File "/home/user/project/main.py", line 42, in <module>
+    result = process_data(input)
+  File "/home/user/project/utils.py", line 15, in process_data
+    return data.transform()
+AttributeError: 'NoneType' object has no attribute 'transform'
+```
+
+From this error, `parse_error_stack` would extract:
+- `/home/user/project/main.py`
+- `/home/user/project/utils.py`
+</Accordion>
+
+### File Validation
+
+The function only includes files that actually exist on the filesystem:
+
+```python
+if os.path.exists(file_path):
+  files.append(file_path)
+```
+
+This prevents hallucinated paths from standard library modules or third-party packages from polluting the context.
+
+<Tip>
+The function uses `list(dict.fromkeys(files))` to deduplicate file paths while preserving order - a Python idiom that's more efficient than using `list(set(files))` for maintaining insertion order.
+</Tip>
+
+## Collecting Context
+
+Once file paths are identified, Splat uses the `run_mock_repopack` function to gather file contents:
+
+```python utils.py
+def run_mock_repopack(paths: List[str], style: str = 'json') -> str:
+  """
+  A mock function that simulates what repopack might do.
+  It returns a string with file paths and their full content.
+
+  Args:
+  paths (List[str]): List of file paths to be processed.
+  style (str): Output style (default is 'json', but not used in this mock version).
+
+  Returns:
+  str: A string representation of the full file contents.
+  """
+  result = []
+  for path in paths:
+    if os.path.exists(path):  # Some paths are hallucinative / not real
+      with open(path, 'r') as f:
+        content = f.read()
+      result.append(f"File: {path}\nContent:\n{content}\n")
+
+  return "\n" + "="*50 + "\n".join(result) + "="*50 + "\n"
+```
+
+This concatenated context string is then passed to the AI model along with the error traceback for analysis.
+
+## Alternative Execution Method
+
+For more complex execution scenarios, Splat also provides a threaded execution approach in `errortrace.py`:
+
+```python errortrace.py
+def run_command(command):
+    process = subprocess.Popen(
+        shlex.split(command),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        universal_newlines=True
+    )
+
+    def read_output(pipe, lines):
+        for line in pipe:
+            line = line.strip()
+            lines.append(line)
+
+    stdout, stderr = [], []
+
+    stdout_thread = threading.Thread(target=read_output, args=(process.stdout, stdout))
+    stderr_thread = threading.Thread(target=read_output, args=(process.stderr, stderr))
+
+    stdout_thread.start()
+    stderr_thread.start()
+
+    stdout_thread.join()
+    stderr_thread.join()
+
+    return_code = process.wait()
+
+    return '\n'.join(stdout), '\n'.join(stderr), return_code
+```
+
+<Info>
+This threaded approach ensures that both stdout and stderr are captured in real-time without blocking, which is particularly useful for long-running processes or programs with heavy output.
+</Info>
+
+## Error Analysis Workflow
+
+The complete workflow for error analysis follows these steps:
+
+1. **Execute** the user's Python command via subprocess
+2. **Capture** the stderr output when a `CalledProcessError` is raised
+3. **Parse** the error stack trace to extract file paths
+4. **Optionally build** a dependency graph if `-r` flag is set
+5. **Collect** file contents from all relevant files
+6. **Package** the traceback, error info, and context for AI analysis
+
+<Accordion title="Complete Example Flow">
+```python
+# User runs: splat -r python3 buggy_script.py
+
+# 1. Command execution
+entrypoint = ['python3', 'buggy_script.py']
+traceback, error_info, context = relational_error_parsing_function(entrypoint, '-r')
+
+# 2. Stack trace parsing
+# Extracts: ['buggy_script.py', 'helper.py', 'config.py']
+
+# 3. Dependency graph building
+# Discovers: helper.py imports utils.py, config.py imports constants.py
+
+# 4. Context collection
+# Gathers content from all 5 files
+
+# 5. AI processing
+# Sends traceback + error_info + context to Groq API
+```
+</Accordion>
+
+## Next Steps
+
+- Learn how the [Dependency Graph](/concepts/dependency-graphs) system recursively discovers related files
+- Explore how [AI Integration](/concepts/ai-integration) processes the collected context

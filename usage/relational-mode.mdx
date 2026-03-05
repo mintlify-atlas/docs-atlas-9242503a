@@ -1,0 +1,336 @@
+---
+title: "Relational Mode"
+description: "Deep dive into splat's relational mode for comprehensive dependency analysis and context-aware debugging"
+---
+
+## What is Relational Mode?
+
+Relational mode is splat's advanced analysis feature that builds a complete dependency graph of your project. Instead of only analyzing files in the error traceback, it traces all import relationships to the Nth degree, providing the AI with maximum context for more accurate solutions.
+
+## Enabling Relational Mode
+
+Activate relational mode by adding the `-r` flag:
+
+```bash
+splat squash -r "python3 your_script.py"
+```
+
+<Info>
+The `-r` flag tells splat to build a complete dependency graph starting from files in the error trace.
+</Info>
+
+## How It Works
+
+<Steps>
+  <Step title="Error capture">
+    Splat captures the error and parses the traceback to identify all files mentioned.
+  </Step>
+  
+  <Step title="Build adjacency list">
+    For each file in the error trace, splat uses Python's `ast` module to parse import statements and build a graph of dependencies.
+    
+    ```python
+    # Example imports detected:
+    import module_a
+    from package import module_b
+    from .relative import module_c
+    ```
+  </Step>
+  
+  <Step title="Traverse relationships">
+    Splat recursively follows all import relationships, building a complete picture of your project structure.
+  </Step>
+  
+  <Step title="Collect context">
+    All related files (not just those in the traceback) are collected and their contents are packaged for AI analysis.
+  </Step>
+  
+  <Step title="AI analysis with full context">
+    The AI receives comprehensive context about your project structure, enabling it to understand complex interactions and provide more accurate solutions.
+  </Step>
+</Steps>
+
+## The Dependency Graph Algorithm
+
+Relational mode uses a breadth-first search algorithm to build the dependency graph:
+
+### Graph Construction
+
+1. **Parse imports**: Uses Python's `ast` module to extract all import statements
+2. **Resolve paths**: Converts module names to file paths, checking:
+   - Relative imports (same directory as importing file)
+   - Absolute imports (from project root)
+   - Package imports (dotted module names)
+3. **Respect .gitignore**: Only includes files that are part of your project (not ignored)
+4. **Build adjacency list**: Creates a dictionary mapping each file to its dependencies
+
+### Relationship Traversal
+
+The `get_nth_related_files()` function implements the traversal:
+
+```python
+def get_nth_related_files(start_files: List[str], graph: Dict[str, List[str]]) -> Set[str]:
+    related_files = set(start_files)
+    planned_visit = list(start_files)
+    possible_files = set()
+    
+    while planned_visit:
+        current = planned_visit.pop(0)
+        possible_files.add(current)
+        
+        for neighbor in graph.get(current, []):
+            if neighbor not in related_files:
+                related_files.add(neighbor)
+                planned_visit.append(neighbor)
+    
+    return possible_files
+```
+
+This ensures all files connected to the error (to any degree) are included in the analysis.
+
+## Basic vs Relational Mode Comparison
+
+<Tabs>
+  <Tab title="Basic Mode">
+    ### Files Analyzed
+    
+    Only files directly mentioned in the error traceback.
+    
+    **Example Error Trace:**
+    ```
+    File "main.py", line 10
+    File "utils.py", line 25
+    ```
+    
+    **Files Sent to AI:**
+    - `main.py`
+    - `utils.py`
+    
+    ### Pros
+    - Faster execution
+    - Lower token usage
+    - Sufficient for simple errors
+    
+    ### Cons
+    - May miss context from imported modules
+    - Cannot see how dependencies interact
+    - Less effective for complex errors
+  </Tab>
+  
+  <Tab title="Relational Mode (-r)">
+    ### Files Analyzed
+    
+    All files in the error trace PLUS all files they import (recursively).
+    
+    **Example Error Trace:**
+    ```
+    File "main.py", line 10
+    File "utils.py", line 25
+    ```
+    
+    **Dependency Graph:**
+    ```
+    main.py
+    ├── utils.py
+    ├── config.py
+    └── helpers.py
+    
+    utils.py
+    ├── database.py
+    └── validators.py
+    
+    helpers.py
+    └── constants.py
+    ```
+    
+    **Files Sent to AI:**
+    - `main.py`
+    - `utils.py`
+    - `config.py`
+    - `helpers.py`
+    - `database.py`
+    - `validators.py`
+    - `constants.py`
+    
+    ### Pros
+    - Complete context for AI analysis
+    - Better understanding of module interactions
+    - More accurate solutions for complex errors
+    - Can identify issues in imported code
+    
+    ### Cons
+    - Slightly slower execution
+    - Higher token usage (more context sent to AI)
+    - May include unnecessary files in simple cases
+  </Tab>
+</Tabs>
+
+## Real-World Example
+
+### Scenario: Import Error with Hidden Circular Dependency
+
+You have a project structure:
+
+```
+project/
+├── main.py
+├── models.py
+├── services.py
+└── utils.py
+```
+
+**main.py**
+```python
+from models import User
+from services import UserService
+
+service = UserService()
+user = service.get_user(1)
+print(user.name)
+```
+
+**models.py**
+```python
+from utils import validate_email
+
+class User:
+    def __init__(self, email):
+        if not validate_email(email):
+            raise ValueError("Invalid email")
+        self.email = email
+```
+
+**services.py**
+```python
+from models import User
+from utils import get_database
+
+class UserService:
+    def get_user(self, user_id):
+        db = get_database()
+        # ... fetch user data
+        return User(email="test@example.com")
+```
+
+**utils.py**
+```python
+from services import UserService  # Circular import!
+
+def validate_email(email):
+    return "@" in email
+
+def get_database():
+    # ...
+    pass
+```
+
+### Running Without `-r`
+
+```bash
+splat squash "python3 main.py"
+```
+
+**Result**: The AI only sees `main.py` and perhaps `services.py` from the traceback. It may not identify the circular import in `utils.py`.
+
+### Running With `-r`
+
+```bash
+splat squash -r "python3 main.py"
+```
+
+**Result**: The AI sees the complete dependency graph:
+- `main.py` → imports `models.py`, `services.py`
+- `models.py` → imports `utils.py`
+- `services.py` → imports `models.py`, `utils.py`
+- `utils.py` → imports `services.py` (CIRCULAR!)
+
+The AI can now identify the circular dependency and suggest refactoring `utils.py` to break the cycle.
+
+## When to Use Relational Mode
+
+Use the `-r` flag when:
+
+<CardGroup cols={2}>
+  <Card title="Complex Dependencies" icon="diagram-project">
+    Your error involves multiple modules with interconnected imports
+  </Card>
+  
+  <Card title="Import Errors" icon="file-import">
+    You're dealing with `ImportError` or `ModuleNotFoundError`
+  </Card>
+  
+  <Card title="Unclear Error Source" icon="question">
+    The traceback doesn't clearly indicate where the problem originates
+  </Card>
+  
+  <Card title="Type Errors Across Modules" icon="code">
+    Type mismatches that involve data passed between multiple files
+  </Card>
+</CardGroup>
+
+## Performance Considerations
+
+<Note>
+**Token Usage**: Relational mode sends more content to the AI, which uses more tokens. However, Groq's fast inference means the response time difference is minimal.
+</Note>
+
+### Optimization Tips
+
+1. **Use basic mode first**: Try without `-r` for simple errors
+2. **Keep .gitignore updated**: Splat respects .gitignore to avoid including unnecessary files
+3. **Trust the algorithm**: The dependency graph only includes project files, not standard library modules
+
+## Git Awareness
+
+Both basic and relational modes respect your `.gitignore` file:
+
+```gitignore
+# These won't be included in analysis
+venv/
+__pycache__/
+*.pyc
+.env
+node_modules/
+```
+
+<Warning>
+Splat only analyzes files within your project root. Standard library modules and third-party packages are not included in the dependency graph.
+</Warning>
+
+## Technical Details
+
+### AST Parsing
+
+Splat uses Python's Abstract Syntax Tree (AST) module to safely parse imports without executing code:
+
+```python
+import ast
+
+tree = ast.parse(file_content)
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import):
+        # Handle: import module
+        imports.update(alias.name for alias in node.names)
+    elif isinstance(node, ast.ImportFrom) and node.module:
+        # Handle: from module import name
+        imports.add(node.module)
+```
+
+### Path Resolution
+
+For each import, splat checks multiple possible locations:
+
+1. Same directory as the importing file
+2. Project root directory
+3. Subdirectories for package imports (e.g., `package.module` → `package/module.py`)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Examples" icon="code" href="/usage/examples">
+    See relational mode in action with real debugging scenarios
+  </Card>
+  <Card title="Configuration" icon="gear" href="/usage/configuration">
+    Learn about API keys and project setup
+  </Card>
+</CardGroup>

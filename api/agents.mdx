@@ -1,0 +1,339 @@
+---
+title: "Agent System"
+description: "AI-powered agents for debugging and file operations in Splat"
+---
+
+## Overview
+
+Splat uses multiple agent systems to handle debugging, error correction, and file operations. The agent architecture includes Pydantic AI agents for error analysis and uAgents for autonomous file writing.
+
+## Core Components
+
+### FlagDependencies
+
+A dataclass that manages dependencies between flags and file paths for agent operations.
+
+<ParamField path="flag" type="str">
+  The flag identifier for the dependency
+</ParamField>
+
+<ParamField path="file_path" type="Union[str, Path]">
+  Path to the file being analyzed. Automatically converted to a Path object.
+</ParamField>
+
+```python
+from agents.agents import FlagDependencies
+from pathlib import Path
+
+deps = FlagDependencies(
+    flag="error_analysis",
+    file_path="src/main.py"
+)
+# file_path is automatically converted to Path object
+```
+
+**Source:** `~/workspace/source/agents/agents.py:12-24`
+
+---
+
+## ZapperResult Model
+
+A Pydantic model that structures the output from the bug zapper agent, providing detailed error analysis.
+
+<ParamField path="path" type="str">
+  The full path to the file where the error occurs
+</ParamField>
+
+<ParamField path="file" type="str">
+  The name of the file with the error
+</ParamField>
+
+<ParamField path="line" type="int">
+  Line number where the error occurred (>= 0)
+</ParamField>
+
+<ParamField path="what" type="str">
+  Natural language explanation of what the error is
+</ParamField>
+
+<ParamField path="todo" type="str">
+  Natural language description of steps needed to fix the error
+</ParamField>
+
+```python
+from agents.agents import ZapperResult
+
+result = ZapperResult(
+    path="/home/user/project/src/main.py",
+    file="main.py",
+    line=42,
+    what="TypeError: unsupported operand type(s) for +: 'int' and 'str'",
+    todo="Convert the string to an integer using int() before performing addition"
+)
+```
+
+**Source:** `~/workspace/source/agents/agents.py:28-33`
+
+---
+
+## bug_zapper Agent
+
+The main Pydantic AI agent configured for analyzing programming errors and providing structured debugging advice.
+
+### Configuration
+
+```python
+from agents.agents import bug_zapper, FlagDependencies, ZapperResult
+
+bug_zapper = Agent(
+    model_name=os.getenv('MODEL'),
+    api_key=os.getenv('API_KEY'),
+    deps_type=FlagDependencies,
+    result_type=ZapperResult,
+    system_prompt=(
+        'You are an expert software debugging assistant specializing in '
+        'programming error analysis. Your task is to analyze error tracebacks '
+        'and provide structured, actionable advice.'
+    )
+)
+```
+
+<Info>
+The bug_zapper agent requires `MODEL` and `API_KEY` environment variables to be configured in your `.env` file.
+</Info>
+
+### Usage
+
+The agent analyzes error tracebacks and returns structured `ZapperResult` objects with file location, error explanation, and remediation steps.
+
+**Source:** `~/workspace/source/agents/agents.py:36-45`
+
+---
+
+## File Writer Agent
+
+The file writer agent is a uAgents-based autonomous agent that handles file writing operations and error corrections.
+
+### Agent Configuration
+
+```python
+from agents.file_writer_agent import file_writer
+
+file_writer = Agent(
+    name="file_writer",
+    seed="file_writer_seed",
+    port=8000,
+    endpoint="http://localhost:8000/submit"
+)
+```
+
+**Source:** `~/workspace/source/agents/file_writer_agent.py:22`
+
+### Message Models
+
+#### FileWriteRequest
+
+<ParamField path="file_path" type="str" required>
+  Path to the file to write
+</ParamField>
+
+<ParamField path="content" type="str" required>
+  Content to write to the file
+</ParamField>
+
+#### FileWriteResponse
+
+<ParamField path="success" type="bool">
+  Whether the operation succeeded
+</ParamField>
+
+<ParamField path="message" type="str">
+  Success or error message
+</ParamField>
+
+#### ErrorCorrectionRequest
+
+<ParamField path="response" type="dict" required>
+  Dictionary containing error correction details with `where` (repository_path, file_name, line_number) and `how` (suggested_code_solution) keys
+</ParamField>
+
+---
+
+## Functions
+
+### write_to_file
+
+Writes content to a specified file path.
+
+```python
+@file_writer.on_message(model=FileWriteRequest)
+async def write_to_file(ctx: Context, sender: str, msg: FileWriteRequest):
+    try:
+        with open(msg.file_path, 'w') as file:
+            file.write(msg.content)
+        ctx.logger.info(f"Successfully wrote to file: {msg.file_path}")
+        await ctx.send(
+            sender, 
+            FileWriteResponse(
+                success=True, 
+                message=f"File {msg.file_path} updated successfully"
+            )
+        )
+    except Exception as e:
+        error_message = f"Error writing to file {msg.file_path}: {str(e)}"
+        ctx.logger.error(error_message)
+        await ctx.send(
+            sender, 
+            FileWriteResponse(success=False, message=error_message)
+        )
+```
+
+**Parameters:**
+- `ctx`: uAgents Context object
+- `sender`: Address of the message sender
+- `msg`: FileWriteRequest containing file_path and content
+
+**Source:** `~/workspace/source/agents/file_writer_agent.py:29-39`
+
+---
+
+### apply_error_correction
+
+Applies error corrections to specific lines in files while preserving indentation.
+
+```python
+@file_writer.on_message(model=ErrorCorrectionRequest)
+async def apply_error_correction(
+    ctx: Context, 
+    sender: str, 
+    msg: ErrorCorrectionRequest
+):
+    response = msg.response
+    file_path = os.path.join(
+        response['where']['repository_path'], 
+        response['where']['file_name']
+    )
+    line_number = int(response['where']['line_number'])
+    suggested_code = response['how']['suggested_code_solution']
+    
+    with open(file_path, 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+    
+    if 0 < line_number <= len(lines):
+        stripped_line = lines[line_number - 1].strip()
+        num_whitespace = len(lines[line_number - 1]) - len(stripped_line)
+        lines[line_number - 1] = " " * num_whitespace + suggested_code
+        
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.writelines(lines)
+```
+
+**Parameters:**
+- `ctx`: uAgents Context object
+- `sender`: Address of the message sender
+- `msg`: ErrorCorrectionRequest with correction details
+
+**Features:**
+- Preserves original line indentation
+- Validates line number is within file bounds
+- Sends success/failure response back to sender
+
+<Warning>
+The function replaces entire lines. Make sure the suggested_code_solution includes the complete corrected line.
+</Warning>
+
+**Source:** `~/workspace/source/agents/file_writer_agent.py:41-75`
+
+---
+
+## REST API Endpoint
+
+The file writer agent exposes a REST endpoint for error corrections:
+
+```python
+@file_writer.on_rest_post(
+    "/apply_correction", 
+    ErrorCorrectionRequest, 
+    ErrorCorrectionResponse
+)
+async def handle_error_correction(
+    ctx: Context, 
+    request: ErrorCorrectionRequest
+) -> ErrorCorrectionResponse:
+    try:
+        await apply_error_correction(ctx, file_writer.address, request)
+        return ErrorCorrectionResponse(
+            success=True, 
+            message="Error correction applied successfully"
+        )
+    except Exception as e:
+        return ErrorCorrectionResponse(
+            success=False, 
+            message=f"Error applying correction: {str(e)}"
+        )
+```
+
+**Endpoint:** `POST http://localhost:8000/apply_correction`
+
+**Source:** `~/workspace/source/agents/file_writer_agent.py:77-84`
+
+---
+
+## Running the File Writer Agent
+
+Start the file writer agent server:
+
+```bash
+python -m agents.file_writer_agent
+```
+
+The agent will start on `http://localhost:8000` and display:
+```
+Starting file writer agent server on http://localhost:8000
+Starting up file_writer agent @ <agent_address>
+```
+
+<Note>
+The file writer agent runs as a separate process and communicates via uAgents messaging protocol.
+</Note>
+
+---
+
+## Usage Example
+
+Complete example showing how to use the agents together:
+
+```python
+import asyncio
+from agents.agents import bug_zapper, FlagDependencies
+from agents.file_writer_agent import file_writer, ErrorCorrectionRequest
+
+# 1. Analyze an error with bug_zapper
+deps = FlagDependencies(
+    flag="analyze",
+    file_path="src/buggy_code.py"
+)
+
+# Run the agent to analyze traceback
+result = await bug_zapper.run(
+    "TypeError at line 42: unsupported operand type(s)...",
+    deps=deps
+)
+
+# 2. Apply the correction using file_writer agent
+correction_request = ErrorCorrectionRequest(
+    response={
+        'where': {
+            'repository_path': '/home/user/project',
+            'file_name': 'src/buggy_code.py',
+            'line_number': result.line
+        },
+        'how': {
+            'suggested_code_solution': 'x = int(input("Enter number: "))\n'
+        }
+    }
+)
+
+# Send to file writer agent
+# (Assuming file_writer is running)
+```

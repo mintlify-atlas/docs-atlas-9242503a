@@ -1,0 +1,363 @@
+---
+title: "Utility Functions"
+description: "Core utilities for parsing errors, building dependency graphs, and collecting file contents"
+---
+
+## Overview
+
+The `utils` module provides essential functions for Splat's error analysis pipeline. It handles parsing error stack traces, building Python import dependency graphs, traversing file relationships, and collecting file contents.
+
+---
+
+## parse_error_stack
+
+Parses Python error tracebacks to extract all file paths mentioned in the error.
+
+### Function Signature
+
+```python
+def parse_error_stack(error_info: str) -> List[str]
+```
+
+### Parameters
+
+<ParamField path="error_info" type="str" required>
+  The complete error stack trace as a string, typically captured from stderr.
+  
+  **Example:**
+  ```
+  File "/path/to/script.py", line 15, in <module>
+    result = calculate()
+  File "/path/to/utils.py", line 42, in calculate
+    return x / y
+  ZeroDivisionError: division by zero
+  ```
+</ParamField>
+
+### Return Value
+
+<ResponseField name="files" type="List[str]">
+  A list of unique file paths found in the error trace. Only paths that exist on the filesystem are included. Order is preserved from first occurrence.
+</ResponseField>
+
+### How It Works
+
+1. Uses regex pattern `r'(?:File "([^"]+)"|\b(\S+\.py)\b)'` to match file paths
+2. Processes each line of the error message
+3. Strips quotes and whitespace from matched paths
+4. Validates that files exist using `os.path.exists()`
+5. Returns deduplicated list while preserving order
+
+### Usage Example
+
+```python
+from utils.utils import parse_error_stack
+
+error_trace = '''
+Traceback (most recent call last):
+  File "/home/user/project/main.py", line 10, in <module>
+    process_data()
+  File "/home/user/project/processor.py", line 25, in process_data
+    result = calculate(x)
+TypeError: calculate() missing 1 required positional argument: 'y'
+'''
+
+files = parse_error_stack(error_trace)
+# Result: ['/home/user/project/main.py', '/home/user/project/processor.py']
+```
+
+---
+
+## build_adjacency_list
+
+Constructs a dependency graph by analyzing Python import statements in the provided files and recursively processing imported modules.
+
+### Function Signature
+
+```python
+def build_adjacency_list(
+    files: List[str], 
+    project_root: str
+) -> Dict[str, List[str]]
+```
+
+### Parameters
+
+<ParamField path="files" type="List[str]" required>
+  List of Python file paths to analyze for import relationships. These serve as the starting points for graph construction.
+</ParamField>
+
+<ParamField path="project_root" type="str" required>
+  The root directory of the project. Used to validate that files are within the project scope and to resolve relative imports.
+</ParamField>
+
+### Return Value
+
+<ResponseField name="adjacency_list" type="Dict[str, List[str]]">
+  A dictionary where each key is a file path and its value is a list of file paths that it imports. Represents a directed graph of dependencies.
+  
+  **Example:**
+  ```python
+  {
+    '/project/main.py': ['/project/utils.py', '/project/config.py'],
+    '/project/utils.py': ['/project/helpers.py'],
+    '/project/config.py': [],
+    '/project/helpers.py': []
+  }
+  ```
+</ResponseField>
+
+### Algorithm
+
+1. **Initialize**: Creates empty adjacency list and tracks processed files
+2. **Parse AST**: Uses `ast.parse()` to analyze import statements in each file
+3. **Extract Imports**: Walks the AST to find:
+   - `import module` statements
+   - `from module import ...` statements
+4. **Resolve Paths**: Converts module names to file paths by checking:
+   - File directory: `./imported_module.py`
+   - Project root: `<project_root>/imported_module.py`
+   - Dotted imports: `package.module` → `<project_root>/package/module.py`
+5. **Recursive Processing**: Automatically processes imported files to build complete graph
+6. **Error Handling**: Gracefully handles syntax errors and missing files
+
+### Usage Example
+
+```python
+from utils.utils import build_adjacency_list
+import os
+
+# Files from error stack
+error_files = [
+    '/home/user/project/main.py',
+    '/home/user/project/processor.py'
+]
+
+project_root = '/home/user/project'
+
+# Build dependency graph
+graph = build_adjacency_list(error_files, project_root)
+
+# Inspect relationships
+for file, imports in graph.items():
+    print(f"{file} imports:")
+    for imported in imports:
+        print(f"  - {imported}")
+```
+
+---
+
+## get_nth_related_files
+
+Traverses the dependency graph to find all files related to the starting files through any degree of connection (breadth-first search).
+
+### Function Signature
+
+```python
+def get_nth_related_files(
+    start_files: List[str], 
+    graph: Dict[str, List[str]]
+) -> Set[str]
+```
+
+### Parameters
+
+<ParamField path="start_files" type="List[str]" required>
+  The initial set of files to start traversal from. Typically files mentioned in the error stack.
+</ParamField>
+
+<ParamField path="graph" type="Dict[str, List[str]]" required>
+  The adjacency list representing file dependencies, as returned by `build_adjacency_list()`.
+</ParamField>
+
+### Return Value
+
+<ResponseField name="related_files" type="Set[str]">
+  A set of all file paths reachable from the start files by following import relationships. Includes the start files themselves.
+</ResponseField>
+
+### Algorithm
+
+Uses breadth-first search (BFS) to traverse the graph:
+
+1. Initialize `related_files` set with start files
+2. Create `planned_visit` queue with start files
+3. While queue is not empty:
+   - Pop the first file from queue
+   - Add it to `possible_files` set
+   - For each neighbor (imported file):
+     - If not already visited, add to both `related_files` and queue
+4. Return all visited files
+
+### Usage Example
+
+```python
+from utils.utils import build_adjacency_list, get_nth_related_files
+
+# Build graph
+graph = build_adjacency_list(error_files, project_root)
+
+# Find all related files
+all_related = get_nth_related_files(error_files, graph)
+
+print(f"Error involves {len(all_related)} related files:")
+for file in all_related:
+    print(f"  - {file}")
+```
+
+<Note>
+  This function finds **all transitive dependencies**, not just direct imports. For large codebases, this can include many files.
+</Note>
+
+---
+
+## run_mock_repopack
+
+Collects and formats the contents of multiple files into a single string for context provision to the AI model.
+
+### Function Signature
+
+```python
+def run_mock_repopack(
+    paths: List[str], 
+    style: str = 'json'
+) -> str
+```
+
+### Parameters
+
+<ParamField path="paths" type="List[str]" required>
+  List of file paths to read and include in the output.
+</ParamField>
+
+<ParamField path="style" type="str" default="json">
+  Output style parameter (currently not used in implementation but reserved for future formatting options).
+</ParamField>
+
+### Return Value
+
+<ResponseField name="context" type="str">
+  A formatted string containing all file contents with clear file separators.
+  
+  **Format:**
+  ```
+  ==================================================
+  File: /path/to/file1.py
+  Content:
+  [file1 contents]
+  
+  ==================================================
+  File: /path/to/file2.py
+  Content:
+  [file2 contents]
+  
+  ==================================================
+  ```
+</ResponseField>
+
+### Behavior
+
+- Skips files that don't exist (handles "hallucinative" paths gracefully)
+- Reads entire file contents
+- Uses 50-character `=` separators between files
+- Includes file paths as headers for context
+
+### Usage Example
+
+```python
+from utils.utils import (
+    parse_error_stack,
+    build_adjacency_list,
+    get_nth_related_files,
+    run_mock_repopack
+)
+
+# Complete pipeline
+error_trace = get_error_from_subprocess()
+files = parse_error_stack(error_trace)
+
+graph = build_adjacency_list(files, '/home/user/project')
+all_files = get_nth_related_files(files, graph)
+
+# Collect all file contents
+context = run_mock_repopack(list(all_files))
+
+# Now ready to send to AI
+print(f"Collected {len(all_files)} files")
+print(f"Total context size: {len(context)} characters")
+```
+
+---
+
+## Complete Workflow Example
+
+Here's how all utilities work together in Splat's error analysis pipeline:
+
+```python
+import os
+from utils.utils import (
+    parse_error_stack,
+    build_adjacency_list,
+    get_nth_related_files,
+    run_mock_repopack
+)
+
+def analyze_error_with_context(error_info: str, flag: str = None):
+    """
+    Complete error analysis workflow using all utility functions.
+    """
+    project_root = os.getcwd()
+    
+    # Step 1: Extract file paths from error
+    error_files = parse_error_stack(error_info)
+    print(f"Found {len(error_files)} files in error stack")
+    
+    # Step 2: Build dependency graph (if recursive flag set)
+    if flag == '-r':
+        graph = build_adjacency_list(error_files, project_root)
+        print(f"Built graph with {len(graph)} nodes")
+        
+        # Step 3: Find all related files
+        all_files = get_nth_related_files(error_files, graph)
+        print(f"Found {len(all_files)} total related files")
+    else:
+        all_files = error_files
+    
+    # Step 4: Collect file contents
+    context = run_mock_repopack(list(all_files))
+    
+    return context
+
+# Usage
+error_trace = """
+Traceback (most recent call last):
+  File "main.py", line 10
+    result = process()
+TypeError: process() missing required argument
+"""
+
+context = analyze_error_with_context(error_trace, flag='-r')
+print("Context ready for AI analysis")
+```
+
+## Helper Functions
+
+### is_project_file
+
+```python
+def is_project_file(file_path: str, project_root: str) -> bool
+```
+
+Checks if a file path is within the project root directory. Used internally by `build_adjacency_list` to ensure only project files are included in the dependency graph.
+
+**Returns:** `True` if the file is under the project root, `False` otherwise.
+
+## Notes
+
+<Note>
+  The `build_adjacency_list` function gracefully handles syntax errors when parsing files, allowing it to work even with broken code that's being debugged.
+</Note>
+
+<Note>
+  All functions use absolute file paths internally to avoid ambiguity and ensure correct file resolution across different working directories.
+</Note>

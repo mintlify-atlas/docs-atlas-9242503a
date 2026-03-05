@@ -1,0 +1,82 @@
+---
+title: 'Introduction'
+description: 'AI-powered Python debugging CLI tool that delivers instant, contextual debug responses'
+---
+
+```
+ /\_/\
+( o.o )
+ > ^ <
+```
+
+## What is Splat?
+
+Splat is an AI-powered debugging CLI tool that combines your compile/runtime errors with deep contextual analysis to deliver highly educated debug responses. Created at CalHacks 11.0, Splat is perfect for whenever you have an error that needs to be quickly fixed, understood, and prevented in the future.
+
+Instead of manually searching through stack traces and related files, Splat automatically gathers all relevant context from your codebase and uses AI to provide instant, actionable debugging insights.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="AI-Optimized" icon="bolt">
+    Uses Groq's extremely fast inference model to produce instant debug responses without sacrificing accuracy
+  </Card>
+  
+  <Card title="Simple to Use" icon="terminal">
+    Works out-of-the-box globally in any Python project without configuration
+  </Card>
+  
+  <Card title="Git Aware" icon="git-alt">
+    Respects your .gitignore files to avoid using sensitive information
+  </Card>
+  
+  <Card title="Highly Contextual" icon="sitemap">
+    Use the `-r` flag to grab all related files to the Nth degree for maximum context and accuracy
+  </Card>
+</CardGroup>
+
+## How It Works
+
+Splat analyzes your Python errors by:
+
+1. **Running your code** and capturing any errors or exceptions
+2. **Extracting stack traces** and identifying problematic files
+3. **Gathering context** from related files in your codebase
+4. **Sending to Groq AI** for fast, intelligent analysis
+5. **Delivering actionable insights** to fix and prevent the error
+
+<Info>
+The `-r` (relational) flag enables advanced context gathering, pulling in all files connected to the error stack for maximum debugging accuracy.
+</Info>
+
+## Why Use Splat?
+
+**Speed**: Get instant AI-powered debug responses instead of manually debugging for hours
+
+**Context**: Automatically gathers all relevant code context, not just the error message
+
+**Intelligence**: Uses advanced AI models to understand the root cause and suggest fixes
+
+**Privacy**: Git-aware design respects your .gitignore and keeps sensitive data safe
+
+**Simplicity**: Works globally across all your Python projects without configuration
+
+## Use Cases
+
+- Quickly debugging runtime errors in development
+- Understanding complex stack traces across multiple files
+- Learning from errors with detailed explanations
+- Fixing errors in unfamiliar codebases
+- Preventing similar errors in the future
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Splat and set up your environment
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Run your first debug session in minutes
+  </Card>
+</CardGroup>

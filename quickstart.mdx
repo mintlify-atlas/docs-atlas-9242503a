@@ -1,80 +1,276 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quick Start'
+description: 'Get started with Splat and run your first AI-powered debug session in minutes'
 ---
 
-## Get started in three steps
+## Get Your First Debug Response
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through using Splat to debug your first Python error. You'll learn the basic commands and see how Splat's AI-powered analysis works in practice.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Before starting, make sure you've completed the [installation](/installation) steps and set up your Groq API key.
 </Note>
+
+## Prerequisites Checklist
+
+<Steps>
+  <Step title="Verify Splat is installed">
+    ```bash
+    splat --help
+    ```
+    
+    You should see the Splat help menu with available commands.
+  </Step>
+  
+  <Step title="Confirm Groq API key is set">
+    ```bash
+    echo $GROQ_API_KEY
+    ```
+    
+    This should display your API key. If empty, set it:
+    ```bash
+    export GROQ_API_KEY="your-api-key-here"
+    ```
+  </Step>
+  
+  <Step title="Navigate to your Python project">
+    ```bash
+    cd /path/to/your/python/project
+    ```
+  </Step>
+</Steps>
+
+## Basic Usage
+
+### The `splat squash` Command
+
+Splat uses the `squash` command to debug your Python code. The basic syntax is:
+
+```bash
+splat squash "python3 your_script.py"
+```
+
+Simply wrap your normal Python execution command in quotes and prepend it with `splat squash`.
+
+<Info>
+Use the exact command you would normally use to run your script, including any arguments or flags.
+</Info>
+
+## Your First Debug Session
+
+### Example 1: Simple Error
+
+Let's say you have a script `foo.py` that's throwing an error:
+
+```bash
+splat squash "python3 foo.py"
+```
+
+**What happens:**
+
+1. Splat runs `python3 foo.py`
+2. Captures any error output
+3. Analyzes the stack trace
+4. Gathers context from related files
+5. Sends to Groq AI for analysis
+6. Returns a detailed debug response
+
+**Example output:**
+
+```
+🐱 Splat is analyzing your error...
+
+Error detected: NameError: name 'calculate_total' is not defined
+
+Stack trace:
+  File "foo.py", line 15, in main
+    result = calculate_total(items)
+
+AI Analysis:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The error occurs because 'calculate_total' function is not 
+imported or defined before being called in line 15.
+
+Suggested fix:
+1. Check if calculate_total is defined in another module
+2. Add the import statement: from utils import calculate_total
+3. Or define the function before calling it
+
+Root cause: Missing function definition or import
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Example 2: With Arguments
+
+If your script takes command-line arguments:
+
+```bash
+splat squash "python3 main.py --input data.csv --verbose"
+```
+
+Splat will pass all arguments through to your script while monitoring for errors.
+
+## Using Relational Mode (`-r` flag)
+
+The `-r` flag enables **relational context gathering**, which provides deeper analysis by including all files related to your error stack.
+
+### When to Use `-r`
+
+Use the `-r` flag when:
+- Your error involves multiple files or modules
+- You need deeper contextual analysis
+- The error is complex or spans different parts of your codebase
+- You want the most accurate debugging response
+
+### Example: Relational Mode
+
+```bash
+splat squash -r "python3 main.py"
+```
+
+**Difference from basic mode:**
+
+<CodeGroup>
+
+```bash Basic Mode
+splat squash "python3 main.py"
+# Analyzes only the files in the immediate stack trace
+```
+
+```bash Relational Mode (-r)
+splat squash -r "python3 main.py"
+# Analyzes stack trace files + all related modules, imports, and dependencies
+```
+
+</CodeGroup>
+
+<Warning>
+Relational mode (`-r`) takes slightly longer but provides significantly more context. Use it for complex errors or when the basic mode doesn't provide enough insight.
+</Warning>
+
+## Understanding Splat's Output
+
+Splat provides several types of information in its debug response:
+
+### 1. Error Detection
+```
+Error detected: TypeError: unsupported operand type(s)
+```
+The specific error that was caught.
+
+### 2. Stack Trace
+```
+Stack trace:
+  File "main.py", line 42, in process_data
+  File "utils.py", line 18, in transform
+```
+Where the error occurred in your code.
+
+### 3. AI Analysis
+Detailed explanation of:
+- What caused the error
+- Why it happened
+- How to fix it
+- How to prevent it in the future
+
+### 4. Code Suggestions
+Specific code changes or fixes when applicable.
+
+## Common Use Cases
+
+<AccordionGroup>
+  <Accordion title="Debugging Import Errors">
+    ```bash
+    splat squash "python3 app.py"
+    ```
+    Splat will identify missing imports and suggest the correct import statements.
+  </Accordion>
+  
+  <Accordion title="Fixing Type Errors">
+    ```bash
+    splat squash -r "python3 calculator.py"
+    ```
+    Use `-r` to understand type mismatches across multiple functions.
+  </Accordion>
+  
+  <Accordion title="Resolving Syntax Errors">
+    ```bash
+    splat squash "python3 script.py"
+    ```
+    Get instant feedback on syntax issues with suggestions for fixes.
+  </Accordion>
+  
+  <Accordion title="Debugging Scripts with Dependencies">
+    ```bash
+    splat squash -r "python3 main.py --config prod.yaml"
+    ```
+    Relational mode helps track errors through complex dependency chains.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start Simple" icon="1">
+    Use basic `splat squash` first, add `-r` if you need more context
+  </Card>
+  
+  <Card title="Use Exact Commands" icon="2">
+    Run Splat with the exact command you'd normally use
+  </Card>
+  
+  <Card title="Check .gitignore" icon="3">
+    Splat respects .gitignore to protect sensitive files
+  </Card>
+  
+  <Card title="Review Suggestions" icon="4">
+    AI suggestions are highly accurate but always review before applying
+  </Card>
+</CardGroup>
+
+## Known Limitations
+
+<Warning>
+Be aware of these current limitations:
+- Splat will not conform to formatting configurations when inserting code
+- May have issues with sub-module entrypoints not originating in the root directory
+</Warning>
+
+## Next Steps
+
+Now that you've run your first debug session, explore more features:
+
+- Learn about advanced debugging techniques
+- Understand how Splat gathers context
+- Optimize your debugging workflow
+- Integrate Splat into your development process
+
+<Card title="Need Help?" icon="question">
+  If you encounter issues, check the troubleshooting section in the [Installation](/installation#troubleshooting) guide or review Splat's GitHub repository.
+</Card>
+
+## Example Workflow
+
+Here's a complete workflow example:
+
+```bash
+# 1. Navigate to your project
+cd ~/projects/my-python-app
+
+# 2. Run Splat on your script
+splat squash "python3 main.py"
+
+# 3. Review the AI analysis
+
+# 4. Apply suggested fixes to your code
+
+# 5. Run again to verify the fix
+splat squash "python3 main.py"
+
+# 6. If needed, use relational mode for deeper analysis
+splat squash -r "python3 main.py"
+```
+
+<Info>
+Splat works globally across all your Python projects without any per-project configuration. Just use it whenever you need instant debugging help!
+</Info>

@@ -1,0 +1,616 @@
+---
+title: "Terminal Integration"
+description: "Tmux-based terminal session management and process monitoring in Splat"
+---
+
+## Overview
+
+Splat provides comprehensive terminal integration through tmux sessions, enabling AI-powered debugging in interactive terminal environments. The system includes session management, process monitoring, and ZMQ-based communication.
+
+## ZapShell
+
+An interactive command-line shell built with Python's `cmd` module that provides the main interface for Splat.
+
+### Initialization
+
+```python
+from cli.cli import ZapShell
+
+shell = ZapShell()
+shell.cmdloop()
+```
+
+The shell initializes with:
+- `intro`: Welcome message
+- `prompt`: `zap> `
+- `ctx`: Click context (set after initialization)
+- `zapper`: Zapper instance for ZMQ communication
+- `term_sesh`: TermSesh instance for tmux session management
+
+**Source:** `~/workspace/source/cli/cli.py:8-16`
+
+---
+
+## Available Commands
+
+### hello
+
+Display a greeting message.
+
+```bash
+zap> hello
+Hello!
+```
+
+**Source:** `~/workspace/source/cli/cli.py:19-21`
+
+---
+
+### echo
+
+Echo back the provided input.
+
+```bash
+zap> echo Hello, Splat!
+Hello, Splat!
+```
+
+**Source:** `~/workspace/source/cli/cli.py:23-25`
+
+---
+
+### start
+
+Start a new tmux session with process monitoring enabled.
+
+```bash
+zap> start
+tmux session and monitoring started successfully
+```
+
+**What it does:**
+1. Creates a `Zapper` instance for ZMQ communication
+2. Creates a `TermSesh` with session name `zapper_session`
+3. Opens a new terminal window attached to the tmux session
+4. Starts a `ProcessMonitor` thread to track terminal output
+5. Sends initial commands to the terminal (`ls`, `cat setup.py`)
+
+<Info>
+The start command automatically opens a new terminal window on macOS (using Terminal.app) or Linux (using gnome-terminal).
+</Info>
+
+**Source:** `~/workspace/source/cli/cli.py:40-53`
+
+---
+
+### send
+
+Send a command to the active tmux terminal session.
+
+```bash
+zap> send python test.py
+Command sent: Command sent
+```
+
+<Warning>
+The `send` command requires an active terminal session. Use `start` first if no session is active.
+</Warning>
+
+**Source:** `~/workspace/source/cli/cli.py:57-65`
+
+---
+
+### exit / quit
+
+Exit the Splat CLI and clean up resources.
+
+```bash
+zap> exit
+Goodbye!
+```
+
+**Cleanup actions:**
+- Stops the ProcessMonitor thread
+- Terminates the terminal process
+- Kills the tmux session
+
+**Source:** `~/workspace/source/cli/cli.py:27-38`
+
+---
+
+## TermSesh Class
+
+Manages tmux sessions for interactive terminal integration with ZMQ-based communication.
+
+### Initialization
+
+```python
+from cli.term_sesh import TermSesh
+
+term_sesh = TermSesh(
+    port=5555,
+    terminal_app=None,
+    session_name='zapper_session'
+)
+```
+
+<ParamField path="port" type="int" default="5555">
+  ZMQ publisher port for sending terminal events
+</ParamField>
+
+<ParamField path="terminal_app" type="str" optional>
+  Terminal application to use (auto-detected by platform)
+</ParamField>
+
+<ParamField path="session_name" type="str" default="zapper_session">
+  Name for the tmux session
+</ParamField>
+
+**Attributes:**
+- `context`: ZMQ Context for messaging
+- `publisher`: ZMQ PUB socket bound to specified port
+- `system`: Platform name (Darwin/Linux/Windows)
+- `monitor`: ProcessMonitor instance (set after start)
+- `tmux_stack`: List tracking tmux output history
+
+**Source:** `~/workspace/source/cli/term_sesh.py:13-23`
+
+---
+
+## TermSesh Methods
+
+### open_new_terminal()
+
+Creates a new tmux session and opens it in a terminal window.
+
+```python
+if term_sesh.open_new_terminal():
+    print("Terminal session started")
+    term_sesh.send_to_terminal("ls -la")
+```
+
+**Platform Support:**
+- **macOS**: Uses AppleScript to open Terminal.app
+- **Linux**: Uses gnome-terminal
+- **Windows**: Not yet supported
+
+**Returns:** `bool` - True if successful, False otherwise
+
+<Note>
+The method automatically kills any existing session with the same name before creating a new one.
+</Note>
+
+**Source:** `~/workspace/source/cli/term_sesh.py:45-74`
+
+---
+
+### send_to_terminal(command: str)
+
+Sends a command to the active tmux session.
+
+```python
+response = term_sesh.send_to_terminal("python main.py")
+if response:
+    print(f"Command sent: {response}")
+```
+
+**Parameters:**
+- `command`: Shell command to execute in the tmux session
+
+**Returns:** `Optional[str]` - "Command sent" on success, None on error
+
+**Implementation:**
+```python
+subprocess.run([
+    'tmux', 'send-keys', 
+    '-t', self.session_name, 
+    command, 'C-m'
+])
+```
+
+**Source:** `~/workspace/source/cli/term_sesh.py:135-142`
+
+---
+
+### read_tmux_output()
+
+Reads and cleans output from the tmux session.
+
+```python
+output = term_sesh.read_tmux_output()
+if output:
+    print(f"New output: {output}")
+```
+
+**Features:**
+- Captures the current tmux pane content
+- Cleans ANSI escape sequences and Unicode characters
+- Returns only new output (diff from previous read)
+- Maintains output history in `tmux_stack`
+
+**Returns:** `str` - New output since last read, or empty string
+
+**Source:** `~/workspace/source/cli/term_sesh.py:90-103`
+
+---
+
+### clean_tmux_output(raw_output: str)
+
+Cleans and formats raw tmux output by removing ANSI codes and duplicates.
+
+```python
+cleaned = term_sesh.clean_tmux_output(raw_tmux_output)
+```
+
+**Cleaning operations:**
+1. Removes ANSI escape sequences (colors, formatting)
+2. Removes Unicode prompt characters (powerline symbols)
+3. Strips whitespace from lines
+4. Removes empty lines
+5. Removes duplicate consecutive lines
+
+**Returns:** `str` - Cleaned output with one line per unique entry
+
+**Source:** `~/workspace/source/cli/term_sesh.py:105-130`
+
+---
+
+### kill_tmux_session()
+
+Terminates the tmux session if it exists.
+
+```python
+term_sesh.kill_tmux_session()
+```
+
+**Source:** `~/workspace/source/cli/term_sesh.py:76-88`
+
+---
+
+### is_terminal_active()
+
+Checks if the terminal session is active and valid.
+
+```python
+if term_sesh.is_terminal_active():
+    term_sesh.send_to_terminal("echo 'Still running'")
+```
+
+**Returns:** `bool` - True if terminal process is running
+
+**Source:** `~/workspace/source/cli/term_sesh.py:131-134`
+
+---
+
+### send_code_segment(code_data)
+
+Sends compressed code segments with metadata over ZMQ.
+
+```python
+term_sesh.send_code_segment({
+    'file_path': 'src/main.py',
+    'code': 'def hello():\n    print("Hello")',
+    'metadata': {'language': 'python'},
+    'action': 'analyze'
+})
+```
+
+**Parameters:**
+- `code_data`: Dictionary with file_path, code, metadata, and action keys
+
+**Implementation:**
+- Compresses code content using zlib
+- Encodes with base64
+- Publishes via ZMQ
+
+**Source:** `~/workspace/source/cli/term_sesh.py:26-43`
+
+---
+
+## ProcessMonitor Class
+
+Monitors tmux session output in a background thread and publishes changes via ZMQ.
+
+### Initialization
+
+```python
+from cli.process_monitor import ProcessMonitor
+
+monitor = ProcessMonitor(term_sesh)
+monitor.start_monitoring()
+```
+
+<ParamField path="term_sesh" type="TermSesh" required>
+  The TermSesh instance to monitor
+</ParamField>
+
+**Attributes:**
+- `term_sesh`: Reference to the TermSesh instance
+- `monitor_thread`: Background thread for monitoring
+- `is_running`: Flag to control monitoring loop
+
+**Source:** `~/workspace/source/cli/process_monitor.py:5-9`
+
+---
+
+### start_monitoring()
+
+Starts the background monitoring thread.
+
+```python
+monitor = ProcessMonitor(term_sesh)
+monitor.start_monitoring()
+print("Monitoring started")
+```
+
+**Behavior:**
+- Creates a daemon thread running `monitor_tmux()`
+- Thread automatically terminates when main program exits
+
+**Source:** `~/workspace/source/cli/process_monitor.py:11-16`
+
+---
+
+### monitor_tmux()
+
+Background loop that reads tmux output and publishes via ZMQ.
+
+```python
+def monitor_tmux(self):
+    while self.is_running:
+        output = self.term_sesh.read_tmux_output()
+        if output:
+            self.term_sesh.publisher.send_json({
+                'type': 'tmux_output',
+                'data': output,
+                'timestamp': time.time()
+            })
+        time.sleep(1)
+```
+
+**Published Message Format:**
+```json
+{
+    "type": "tmux_output",
+    "data": "command output here",
+    "timestamp": 1234567890.123
+}
+```
+
+<Info>
+The monitor checks for new output every 1 second. Adjust `time.sleep(1)` to change polling frequency.
+</Info>
+
+**Source:** `~/workspace/source/cli/process_monitor.py:17-26`
+
+---
+
+## Zapper Class
+
+Manages ZMQ subscriber threads for receiving terminal events and error messages.
+
+### Initialization
+
+```python
+from cli.zap import Zapper
+
+zapper = Zapper(port=5555)
+zapper.start()
+```
+
+<ParamField path="port" type="int" default="5555">
+  Port to connect ZMQ subscriber to
+</ParamField>
+
+**Attributes:**
+- `context`: ZMQ Context
+- `running`: Flag controlling subscriber thread
+- `subscriber_thread`: Background thread for receiving messages
+
+**Source:** `~/workspace/source/cli/zap.py:8-12`
+
+---
+
+### start()
+
+Starts the ZMQ subscriber thread.
+
+```python
+zapper = Zapper()
+zapper.start()
+print("Zapper started")
+```
+
+**Source:** `~/workspace/source/cli/zap.py:14-20`
+
+---
+
+### stop()
+
+Stops the subscriber thread and terminates ZMQ context.
+
+```python
+zapper.stop()
+```
+
+**Source:** `~/workspace/source/cli/zap.py:31-36`
+
+---
+
+## Complete Usage Example
+
+Here's a complete example showing how all components work together:
+
+```python
+from cli.cli import ZapShell
+from cli.term_sesh import TermSesh
+from cli.process_monitor import ProcessMonitor
+from cli.zap import Zapper
+
+# Initialize the Zapper for ZMQ communication
+zapper = Zapper(port=5555)
+zapper.start()
+
+# Create a terminal session
+term_sesh = TermSesh(
+    port=5555,
+    session_name='my_debug_session'
+)
+
+# Open a new terminal window with tmux
+if term_sesh.open_new_terminal():
+    print("Terminal opened successfully")
+    
+    # Start monitoring the terminal output
+    monitor = ProcessMonitor(term_sesh)
+    monitor.start_monitoring()
+    
+    # Send commands to the terminal
+    term_sesh.send_to_terminal("python -m pytest tests/")
+    
+    # Wait and read output
+    import time
+    time.sleep(2)
+    output = term_sesh.read_tmux_output()
+    print(f"Test output: {output}")
+    
+    # Send code for analysis
+    term_sesh.send_code_segment({
+        'file_path': 'tests/test_example.py',
+        'code': open('tests/test_example.py').read(),
+        'metadata': {'type': 'test'},
+        'action': 'debug'
+    })
+    
+    # Cleanup when done
+    monitor.is_running = False
+    term_sesh.kill_tmux_session()
+    zapper.stop()
+```
+
+---
+
+## Interactive CLI Usage
+
+Launch the interactive shell:
+
+```bash
+python -m cli.cli
+```
+
+**Example session:**
+
+```bash
+Welcome to the Zap CLI. Type help or ? to list commands.
+
+zap> start
+tmux session and monitoring started successfully
+
+zap> send python --version
+Command sent: Command sent
+
+zap> send pytest tests/test_unit.py
+Command sent: Command sent
+
+zap> exit
+Goodbye!
+```
+
+<Note>
+Commands sent after `start` are automatically forwarded to the tmux session if the command is not recognized as a built-in Zap command.
+</Note>
+
+**Source:** `~/workspace/source/cli/cli.py:73-84`
+
+---
+
+## ZMQ Message Types
+
+The terminal integration publishes several message types over ZMQ:
+
+### tmux_output
+
+Published by ProcessMonitor when new terminal output is detected.
+
+```json
+{
+    "type": "tmux_output",
+    "data": "test output...",
+    "timestamp": 1234567890.123
+}
+```
+
+### info
+
+Published by TermSesh for informational messages.
+
+```json
+{
+    "type": "info",
+    "data": "tmux session started"
+}
+```
+
+### code_segment
+
+Published when code is sent for analysis (compressed).
+
+```json
+{
+    "file_path": "src/main.py",
+    "code": "eJwLycgsVgCiRIWS...",
+    "metadata": {},
+    "action": "analyze"
+}
+```
+
+---
+
+## Environment Requirements
+
+<Warning>
+Splat's terminal integration requires tmux to be installed on your system.
+</Warning>
+
+**Installation:**
+
+```bash
+# macOS
+brew install tmux
+
+# Ubuntu/Debian
+sudo apt-get install tmux
+
+# Fedora
+sudo dnf install tmux
+```
+
+**Python Dependencies:**
+- `click` - CLI framework
+- `zmq` (pyzmq) - ZeroMQ messaging
+- `cmd` - Built-in Python module
+
+---
+
+## CLI Entry Point
+
+The main entry point handles keyboard interrupts gracefully:
+
+```python
+def main():
+    try:
+        cli()
+    except KeyboardInterrupt:
+        click.echo("\nGoodbye!")
+        sys.exit(0)
+```
+
+Run with:
+
+```bash
+python -m cli.cli
+# or
+splat  # if installed as package
+```
+
+**Source:** `~/workspace/source/cli/cli.py:101-109`

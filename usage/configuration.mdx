@@ -1,0 +1,362 @@
+---
+title: "Configuration"
+description: "Set up splat with API keys, understand project requirements, and learn about known limitations"
+---
+
+## Environment Setup
+
+Splat requires minimal configuration to get started. The main requirement is a Groq API key for AI-powered analysis.
+
+### Groq API Key
+
+Splat uses [Groq](https://groq.com/) for extremely fast inference. You'll need to obtain an API key and configure it as an environment variable.
+
+<Steps>
+  <Step title="Get a Groq API key">
+    1. Visit [https://console.groq.com](https://console.groq.com)
+    2. Sign up or log in to your account
+    3. Navigate to API Keys section
+    4. Create a new API key
+  </Step>
+  
+  <Step title="Set up environment variable">
+    Splat expects the API key to be available as the `API` environment variable.
+    
+    **Option 1: Use a .env file (Recommended)**
+    
+    Create a `.env` file in your project root:
+    
+    ```bash .env
+    API=your_groq_api_key_here
+    ```
+    
+    Splat automatically loads this using Python's `dotenv` package.
+    
+    <Warning>
+    Always add `.env` to your `.gitignore` to prevent committing sensitive API keys:
+    
+    ```gitignore .gitignore
+    .env
+    ```
+    </Warning>
+  </Step>
+  
+  <Step title="Verify setup">
+    Test that splat can access your API key:
+    
+    ```bash
+    splat squash "python3 test.py"
+    ```
+    
+    If the API key is not found, you'll see an error. Make sure your `.env` file is in the correct location.
+  </Step>
+</Steps>
+
+### Alternative: Export Environment Variable
+
+If you prefer not to use a `.env` file, export the variable in your shell:
+
+<Tabs>
+  <Tab title="Bash/Zsh">
+    Add to your `~/.bashrc` or `~/.zshrc`:
+    
+    ```bash
+    export API="your_groq_api_key_here"
+    ```
+    
+    Then reload:
+    
+    ```bash
+    source ~/.bashrc  # or ~/.zshrc
+    ```
+  </Tab>
+  
+  <Tab title="Fish">
+    Add to your `~/.config/fish/config.fish`:
+    
+    ```fish
+    set -x API "your_groq_api_key_here"
+    ```
+    
+    Then reload:
+    
+    ```fish
+    source ~/.config/fish/config.fish
+    ```
+  </Tab>
+  
+  <Tab title="Windows (PowerShell)">
+    Set as a user environment variable:
+    
+    ```powershell
+    [System.Environment]::SetEnvironmentVariable('API', 'your_groq_api_key_here', 'User')
+    ```
+    
+    Or temporarily for the current session:
+    
+    ```powershell
+    $env:API = "your_groq_api_key_here"
+    ```
+  </Tab>
+</Tabs>
+
+## Project Structure Requirements
+
+Splat works best with standard Python project structures. Here's what you need to know:
+
+### Working Directory
+
+Splat assumes you're running commands from your project's root directory:
+
+```
+project/
+├── main.py
+├── module.py
+├── utils/
+│   ├── __init__.py
+│   └── helpers.py
+└── tests/
+    └── test_main.py
+```
+
+<Info>
+Always run splat from the directory where you would normally run your Python scripts.
+</Info>
+
+### Supported Project Types
+
+Splat works with:
+
+- Single-file scripts
+- Multi-file projects
+- Projects with package structure
+- Django applications (when run from project root)
+- Flask applications (when run from project root)
+- FastAPI applications (when run from project root)
+
+### Git Integration
+
+Splat is **Git-aware** and respects your `.gitignore` file:
+
+```gitignore .gitignore
+# Splat will NOT include these in analysis
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.env
+.DS_Store
+node_modules/
+```
+
+<Note>
+This ensures that:
+- Sensitive files (like `.env`) are never sent to the AI
+- Virtual environment files are excluded
+- Build artifacts and cache files are ignored
+</Note>
+
+## Known Limitations
+
+Be aware of these current limitations when using splat:
+
+### 1. Code Formatting
+
+<Warning>
+Splat does not conform to any formatting configurations when suggesting code fixes.
+</Warning>
+
+If your project uses:
+- **Black**: Suggested code may not match Black's formatting
+- **Pylint/Flake8 rules**: Suggested code may not comply with your linting rules
+- **Custom formatting**: You may need to reformat suggested code manually
+
+**Workaround**: Run your formatter after applying splat's suggestions:
+
+```bash
+# After fixing the error
+black your_file.py
+# or
+pylint your_file.py
+```
+
+### 2. Sub-Module Entrypoints
+
+<Warning>
+Splat does not work well with running sub-module entrypoints that do not originate in the root directory.
+</Warning>
+
+**This will work:**
+```bash
+# Running from project root
+splat squash "python3 main.py"
+splat squash "python3 app/server.py"
+```
+
+**This may not work:**
+```bash
+# Running from a subdirectory
+cd app/
+splat squash "python3 server.py"  # May not resolve imports correctly
+```
+
+**Workaround**: Always run splat from your project root and use relative paths:
+
+```bash
+# Instead of cd'ing into subdirectory, do:
+splat squash "python3 app/server.py"
+```
+
+### 3. Module Resolution
+
+Splat may have difficulty resolving:
+- Dynamic imports (e.g., `__import__()`, `importlib.import_module()`)
+- Conditional imports
+- Imports within try-except blocks
+- Relative imports in deeply nested packages
+
+### 4. Language Support
+
+<Info>
+Currently, splat only supports Python. Other languages are not supported.
+</Info>
+
+While the codebase contains framework detection for Go, Rust, Java, and other languages, these are not fully implemented.
+
+## AI Model Configuration
+
+Splat uses Groq's inference API with the following model:
+
+```python
+model = "llama3-70b-8192"
+```
+
+**Model Characteristics:**
+- **Fast inference**: Responses in milliseconds
+- **70B parameters**: High accuracy for code analysis
+- **8K context window**: Can handle large codebases
+
+<Note>
+Currently, the model is hardcoded. Future versions may support model selection.
+</Note>
+
+## Response Format
+
+Splat requests structured JSON responses from the AI:
+
+```json
+{
+  "where": {
+    "repository_path": "<absolute path>",
+    "file_name": "<filename>",
+    "line_number": "<line>"
+  },
+  "what": {
+    "error_type": "<error type>",
+    "description": "<explanation>"
+  },
+  "how": {
+    "error_origination": "<line number>",
+    "suggested_code_solution": "<code fix>"
+  }
+}
+```
+
+This ensures consistent, parseable output that can be programmatically processed.
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Never commit API keys" icon="key">
+    Always use `.env` files and add them to `.gitignore`
+  </Card>
+  
+  <Card title="Use .gitignore" icon="file-slash">
+    Ensure sensitive files are never sent to the AI for analysis
+  </Card>
+  
+  <Card title="Review suggested code" icon="eye">
+    Always review AI suggestions before applying them to production
+  </Card>
+  
+  <Card title="Rotate keys regularly" icon="rotate">
+    Periodically generate new API keys for enhanced security
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<Accordion title="Error: API key not found">
+  **Problem**: Splat cannot find your Groq API key.
+  
+  **Solution**:
+  1. Check that your `.env` file exists in the project root
+  2. Verify the variable is named `API` (not `GROQ_API_KEY` or similar)
+  3. Ensure the `.env` file is in the same directory where you're running splat
+  4. Try exporting the variable manually: `export API="your_key"`
+</Accordion>
+
+<Accordion title="Imports not resolving in relational mode">
+  **Problem**: The `-r` flag isn't finding all related files.
+  
+  **Solution**:
+  1. Make sure you're running splat from your project root
+  2. Check that imported files are not in `.gitignore`
+  3. Verify that imports use standard Python syntax (not dynamic imports)
+  4. Ensure `__init__.py` files exist for package imports
+</Accordion>
+
+<Accordion title="Suggested code doesn't match my formatting">
+  **Problem**: AI suggestions don't follow your project's code style.
+  
+  **Solution**:
+  This is a known limitation. Run your formatter after applying fixes:
+  ```bash
+  black your_file.py
+  # or
+  autopep8 --in-place your_file.py
+  ```
+</Accordion>
+
+<Accordion title="Splat is slow">
+  **Problem**: Response time is longer than expected.
+  
+  **Solution**:
+  1. Check your internet connection (API calls require network access)
+  2. If using `-r`, try basic mode first to see if it's sufficient
+  3. Verify Groq API service status at [https://status.groq.com](https://status.groq.com)
+</Accordion>
+
+## Advanced Configuration
+
+### Custom Project Root
+
+If your project structure requires it, you can specify a custom project root in the Python code:
+
+```python
+project_root = os.getcwd()  # Default
+# or
+project_root = "/path/to/your/project"
+```
+
+### Timeout Settings
+
+The subprocess that runs your command has default timeout settings. For long-running processes, you may need to adjust these in the source code.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Usage" icon="play" href="/usage/basic-usage">
+    Learn how to use splat for everyday debugging
+  </Card>
+  <Card title="Examples" icon="code" href="/usage/examples">
+    See real-world debugging scenarios with splat
+  </Card>
+</CardGroup>

@@ -1,0 +1,334 @@
+---
+title: "Dependency Graphs"
+description: "Deep dive into Splat's graph-building algorithm for tracking file dependencies"
+---
+
+## Overview
+
+Splat's dependency graph system builds a complete map of import relationships between Python files in your project. When the `-r` (recursive) flag is used, Splat doesn't just analyze the files in the error stack - it discovers and includes all transitively related files through their import statements.
+
+<Info>
+The dependency graph is built using AST (Abstract Syntax Tree) parsing to reliably extract import statements without executing code.
+</Info>
+
+## The Graph Building Process
+
+The dependency tracking system consists of three core functions that work together:
+
+1. **build_adjacency_list** - Constructs the graph from Python files
+2. **get_nth_related_files** - Traverses the graph to find all related files
+3. **is_project_file** - Validates files belong to the project
+
+## Building the Adjacency List
+
+The `build_adjacency_list` function is the heart of the dependency graph system. It recursively analyzes Python files to build a complete graph of import relationships:
+
+```python utils.py
+def build_adjacency_list(files: List[str], project_root: str) -> Dict[str, List[str]]:
+    adjacency_list = {}
+    processed_files = set()
+
+    def process_file(file: str):
+        if file in processed_files or not is_project_file(file, project_root):
+            return
+
+        processed_files.add(file)
+        imports = set()
+        tree = None
+
+        try:
+            with open(file, 'r') as f:
+                content = f.read()
+                try:
+                    tree = ast.parse(content)
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.Import):
+                            imports.update(alias.name for alias in node.names)
+                        elif isinstance(node, ast.ImportFrom) and node.module:
+                            imports.add(node.module)
+                except SyntaxError:
+                    pass
+        except FileNotFoundError:
+            return
+        except Exception as e:
+            return
+
+        adjacency_list[file] = []
+        file_dir = os.path.dirname(file)
+
+        for imp in imports:
+            module_paths = []
+            if '.' in imp:
+                module_paths.append(os.path.join(project_root, *imp.split('.')) + '.py')
+            else:
+                module_paths.extend([
+                    os.path.join(file_dir, f"{imp}.py"),
+                    os.path.join(project_root, f"{imp}.py")
+                ])
+
+            for module_path in module_paths:
+                if os.path.exists(module_path):
+                    adjacency_list[file].append(module_path)
+                    # Recursively process the imported file
+                    process_file(module_path)
+                    break
+
+        if tree is None and imports:
+            adjacency_list[file].append(f"{file} (unresolved imports due to syntax errors)")
+
+    # Start processing with the initial list of files
+    for file in files:
+        process_file(file)
+
+    return adjacency_list
+```
+
+### Algorithm Breakdown
+
+<Accordion title="Step 1: File Validation">
+```python
+if file in processed_files or not is_project_file(file, project_root):
+    return
+
+processed_files.add(file)
+```
+
+The algorithm uses memoization to avoid processing files multiple times. It also validates that files belong to the project using `is_project_file`:
+
+```python
+def is_project_file(file_path: str, project_root: str) -> bool:
+  return os.path.commonpath([file_path, project_root]) == project_root
+```
+
+This ensures external dependencies (like numpy, pandas, etc.) are excluded from the graph.
+</Accordion>
+
+<Accordion title="Step 2: AST Parsing for Imports">
+```python
+tree = ast.parse(content)
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import):
+        imports.update(alias.name for alias in node.names)
+    elif isinstance(node, ast.ImportFrom) and node.module:
+        imports.add(node.module)
+```
+
+The algorithm uses Python's `ast` module to parse the source code and extract import statements. It handles two types:
+
+- **ast.Import**: `import module` or `import module1, module2`
+- **ast.ImportFrom**: `from module import name`
+
+This approach is safer than regex parsing because it understands Python syntax correctly.
+</Accordion>
+
+<Accordion title="Step 3: Module Path Resolution">
+```python
+for imp in imports:
+    module_paths = []
+    if '.' in imp:
+        module_paths.append(os.path.join(project_root, *imp.split('.')) + '.py')
+    else:
+        module_paths.extend([
+            os.path.join(file_dir, f"{imp}.py"),
+            os.path.join(project_root, f"{imp}.py")
+        ])
+
+    for module_path in module_paths:
+        if os.path.exists(module_path):
+            adjacency_list[file].append(module_path)
+            process_file(module_path)  # Recursive call
+            break
+```
+
+For each import, the algorithm tries to resolve it to an actual file path:
+
+1. **Dotted imports** (e.g., `utils.helpers.parser`) → `{project_root}/utils/helpers/parser.py`
+2. **Simple imports** are checked in two locations:
+   - Same directory as the importing file
+   - Project root directory
+
+The first path that exists is used, and that file is recursively processed.
+</Accordion>
+
+<Note>
+The algorithm gracefully handles syntax errors by catching `SyntaxError` exceptions during AST parsing. Files with syntax errors won't have their imports resolved, but they're still included in the graph.
+</Note>
+
+## Graph Traversal Algorithm
+
+Once the adjacency list is built, `get_nth_related_files` performs a breadth-first traversal to find all transitively related files:
+
+```python utils.py
+def get_nth_related_files(start_files: List[str], graph: Dict[str, List[str]]) -> Set[str]:
+  related_files = set(start_files)
+  planned_visit = list(start_files)
+  possible_files = set()
+
+  while planned_visit:
+    current = planned_visit.pop(0)
+    possible_files.add(current)
+
+    for neighbor in graph.get(current, []):
+      if neighbor not in related_files:
+        related_files.add(neighbor)
+        planned_visit.append(neighbor)
+
+  return possible_files
+```
+
+### BFS Traversal Explanation
+
+This is a classic breadth-first search (BFS) algorithm:
+
+1. **Initialize** with the starting files (from error stack)
+2. **Queue** starts with these files
+3. **Visit** each file in the queue
+4. **Explore** its neighbors (imported files)
+5. **Add** unvisited neighbors to both the result set and the queue
+6. **Repeat** until queue is empty
+
+<Tip>
+The algorithm uses two sets: `related_files` tracks what we've discovered, while `possible_files` tracks what we've fully processed. The final return is `possible_files` to ensure we only include files that have been completely traversed.
+</Tip>
+
+## Example Dependency Graph
+
+Let's walk through a concrete example:
+
+```python
+# main.py
+from utils import helper
+from config import settings
+
+def run():
+    helper.process()
+
+# utils/helper.py
+from utils.parser import parse_data
+import logging
+
+def process():
+    data = parse_data()
+
+# utils/parser.py
+import json
+
+def parse_data():
+    return json.loads("{}")
+
+# config/settings.py
+DATABASE_URL = "sqlite:///db.sqlite3"
+```
+
+### Graph Construction
+
+**Step 1**: Starting with `main.py`:
+```python
+adjacency_list = {
+    'main.py': ['utils/helper.py', 'config/settings.py']
+}
+```
+
+**Step 2**: Process `utils/helper.py`:
+```python
+adjacency_list = {
+    'main.py': ['utils/helper.py', 'config/settings.py'],
+    'utils/helper.py': ['utils/parser.py']  # logging is external
+}
+```
+
+**Step 3**: Process `utils/parser.py`:
+```python
+adjacency_list = {
+    'main.py': ['utils/helper.py', 'config/settings.py'],
+    'utils/helper.py': ['utils/parser.py'],
+    'utils/parser.py': []  # json is external
+}
+```
+
+**Step 4**: Process `config/settings.py`:
+```python
+adjacency_list = {
+    'main.py': ['utils/helper.py', 'config/settings.py'],
+    'utils/helper.py': ['utils/parser.py'],
+    'utils/parser.py': [],
+    'config/settings.py': []  # no imports
+}
+```
+
+### Graph Visualization
+
+```
+main.py
+├── utils/helper.py
+│   └── utils/parser.py
+└── config/settings.py
+```
+
+### Traversal Result
+
+If an error occurs in `main.py`, calling `get_nth_related_files(['main.py'], graph)` would return:
+```python
+{
+    'main.py',
+    'utils/helper.py',
+    'utils/parser.py',
+    'config/settings.py'
+}
+```
+
+All four files would be included in the context sent to the AI model.
+
+## Integration with Error Analysis
+
+The dependency graph is integrated into the error analysis pipeline through the `-r` flag:
+
+```python relational.py
+if flag == '-r':
+    graph = build_adjacency_list(collected_traceback_files, project_root)
+    all_related_files = get_nth_related_files(collected_traceback_files, graph)
+    return traceback, error_information, run_mock_repopack(list(all_related_files))
+else:
+    return traceback, error_information, run_mock_repopack(collected_traceback_files)
+```
+
+<Info>
+Without the `-r` flag, only files explicitly mentioned in the error traceback are included. With `-r`, all transitively imported files are discovered and included, providing richer context for debugging.
+</Info>
+
+## Performance Considerations
+
+### Time Complexity
+
+- **build_adjacency_list**: O(N × M) where N is the number of files and M is the average number of imports per file
+- **get_nth_related_files**: O(N + E) where N is nodes and E is edges (standard BFS)
+
+### Space Complexity
+
+- **adjacency_list**: O(N + E) to store all nodes and edges
+- **processed_files**: O(N) to track visited files
+
+### Optimizations
+
+1. **Memoization**: The `processed_files` set prevents reprocessing
+2. **Early validation**: `is_project_file` filters out external dependencies immediately
+3. **Graceful error handling**: Syntax errors don't crash the entire process
+
+<Tip>
+For very large codebases, you might want to add depth limiting to the recursive traversal to prevent including too many distantly related files.
+</Tip>
+
+## Edge Cases Handled
+
+The algorithm handles several tricky scenarios:
+
+1. **Circular imports**: The `processed_files` set prevents infinite loops
+2. **Syntax errors**: Caught and logged, but don't stop processing
+3. **Missing files**: File existence is checked before adding to graph
+4. **External packages**: Filtered out using `is_project_file`
+5. **Relative imports**: Resolved using both file directory and project root
+
+## Next Steps
+
+- See how collected files are used in [AI Integration](/concepts/ai-integration)
+- Learn about [Error Analysis](/concepts/error-analysis) for the full pipeline

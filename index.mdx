@@ -1,97 +1,262 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#F5F4EF] via-[#F5F4EF] to-[#f7f7f0] dark:from-[#0f1117] dark:via-[#0f1117] dark:to-[#1a1d27]">
+  {/* Hero Section */}
+  <div className="relative py-16 sm:py-20 lg:py-24">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+        <div className="lg:col-span-7">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-6">
+            AI-Powered Debugging for <span className="text-[#f43c04]">Python Developers</span>
+          </h1>
+          <p className="text-lg sm:text-xl text-gray-600 dark:text-gray-300 mb-8 max-w-2xl">
+            Splat combines compile and runtime errors with deep contextual analysis to deliver instant, intelligent debugging solutions powered by Groq's lightning-fast inference.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <a
+              href="/quickstart"
+              className="inline-flex items-center justify-center px-6 py-3 text-base font-semibold text-white bg-[#f44300] hover:bg-[#f43c04] rounded-full transition-colors"
+            >
+              Get Started
+            </a>
+            <a
+              href="/api/commands/squash"
+              className="inline-flex items-center justify-center px-6 py-3 text-base font-semibold text-gray-900 dark:text-white bg-transparent border-2 border-gray-300 dark:border-gray-600 hover:border-[#f43c04] dark:hover:border-[#f43c04] rounded-full transition-colors"
+            >
+              View API Reference
+            </a>
+          </div>
+        </div>
+        <div className="lg:col-span-5 hidden lg:flex items-center justify-center">
+          <div className="relative">
+            <div className="absolute -inset-4 bg-gradient-to-r from-[#f43c04] to-[#fc9c7a] rounded-2xl opacity-20 blur-2xl"></div>
+            <div className="relative bg-[#f7f7f0] dark:bg-[#1a1d27] border border-transparent dark:border-[#27272a] rounded-2xl p-6 shadow-xl">
+              <pre className="text-sm text-gray-800 dark:text-gray-200">
+                <code>{`  /\\_/\\
+ ( o.o )
+  > ^ <
+  
+$ splat squash -r "python3 app.py"
 
-Get your documentation site up and running in minutes.
+🔍 Analyzing error traces...
+📊 Building dependency graph...
+🤖 Generating solution...
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+✓ Error fixed in 0.8s`}</code>
+              </pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-## Make it yours
+{/* Quick Start Section */}
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Quick Start</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get Splat running in three simple steps
+  </p>
+  
+  <Steps>
+    <Step title="Install Splat">
+      Install Splat globally using pip:
+      
+      ```bash
+      pip install splat
+      ```
+      
+      Or clone and install from source:
+      
+      ```bash
+      git clone https://github.com/ehcaw/splat.git
+      cd splat
+      pip install -r requirements.txt
+      python setup.py install
+      ```
+    </Step>
+    
+    <Step title="Configure API Key">
+      Set up your Groq API key for AI-powered debugging:
+      
+      ```bash
+      export API="your-groq-api-key"
+      ```
+      
+      <Note>
+        Get your free Groq API key at [groq.com](https://groq.com/)
+      </Note>
+    </Step>
+    
+    <Step title="Run Your First Debug">
+      Use Splat to debug any Python script:
+      
+      ```bash
+      splat squash "python3 your_script.py"
+      ```
+      
+      For deeper analysis with dependency tracking:
+      
+      ```bash
+      splat squash -r "python3 your_script.py"
+      ```
+      
+      <Accordion title="Example Output">
+        Splat will analyze your error, identify the root cause, and provide specific code fixes:
+        
+        ```json
+        {
+          "where": {
+            "repository_path": "/path/to/project",
+            "file_name": "app.py",
+            "line_number": "42"
+          },
+          "what": {
+            "error_type": "NameError",
+            "description": "Variable 'user_data' referenced before assignment"
+          },
+          "how": {
+            "error_origination": "40",
+            "suggested_code_solution": "user_data = {}"
+          }
+        }
+        ```
+      </Accordion>
+    </Step>
+  </Steps>
+</div>
 
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
+{/* Features Section */}
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Why Choose Splat?</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Powerful features designed for developers who value speed and accuracy
+  </p>
+  
+  <CardGroup cols={2}>
     <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+      title="Lightning Fast AI"
+      icon="bolt"
+      href="/concepts/ai-integration"
+    >
+      Powered by Groq's ultra-fast inference for instant debugging responses without sacrificing accuracy.
+    </Card>
+    <Card
+      title="Contextual Analysis"
+      icon="sitemap"
+      href="/concepts/dependency-graphs"
+    >
+      Automatically builds dependency graphs to understand relationships between files and provide better fixes.
+    </Card>
+    <Card
+      title="Git Aware"
+      icon="git-alt"
+      href="/usage/configuration"
+    >
+      Respects your .gitignore to keep sensitive information out of error analysis.
+    </Card>
+    <Card
+      title="Zero Configuration"
+      icon="play"
+      href="/usage/basic-usage"
+    >
+      Works out-of-the-box with any Python project. No complex setup required.
+    </Card>
+    <Card
+      title="Relational Mode"
+      icon="project-diagram"
+      href="/usage/relational-mode"
+    >
+      Trace errors through Nth-degree file connections for comprehensive debugging.
+    </Card>
+    <Card
+      title="Terminal Integration"
+      icon="terminal"
+      href="/api/terminal-integration"
+    >
+      Built-in tmux session management for seamless debugging workflows.
+    </Card>
+  </CardGroup>
+</div>
 
-## Create beautiful pages
+{/* Explore Documentation */}
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Explore the Documentation</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Everything you need to master Splat
+  </p>
+  
+  <CardGroup cols={3}>
+    <Card
+      title="Installation Guide"
+      icon="download"
+      href="/installation"
+    >
+      Step-by-step installation instructions for all platforms
+    </Card>
+    <Card
+      title="Usage Examples"
+      icon="code"
+      href="/usage/examples"
+    >
+      Real-world examples and use cases
+    </Card>
+    <Card
+      title="Error Analysis"
+      icon="magnifying-glass"
+      href="/concepts/error-analysis"
+    >
+      Learn how Splat analyzes and fixes errors
+    </Card>
+    <Card
+      title="CLI Reference"
+      icon="terminal"
+      href="/api/commands/squash"
+    >
+      Complete command-line interface documentation
+    </Card>
+    <Card
+      title="Python API"
+      icon="python"
+      href="/api/relational"
+    >
+      Integrate Splat into your Python projects
+    </Card>
+    <Card
+      title="Advanced Features"
+      icon="wand-magic-sparkles"
+      href="/api/agents"
+    >
+      Explore agents and advanced capabilities
+    </Card>
+  </CardGroup>
+</div>
 
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+{/* CTA Section */}
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="bg-gradient-to-br from-[#f44300] to-[#fc9c7a] rounded-2xl p-8 sm:p-12 text-center">
+    <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+      Ready to Debug Smarter?
+    </h2>
+    <p className="text-lg text-white/90 mb-8 max-w-2xl mx-auto">
+      Join developers who are fixing bugs faster with AI-powered debugging
+    </p>
+    <div className="flex flex-wrap justify-center gap-4">
+      <a
+        href="/quickstart"
+        className="inline-flex items-center justify-center px-8 py-3 text-base font-semibold text-[#f43c04] bg-white hover:bg-gray-100 rounded-full transition-colors"
+      >
+        Get Started Now
+      </a>
+      <a
+        href="https://github.com/ehcaw/splat"
+        className="inline-flex items-center justify-center px-8 py-3 text-base font-semibold text-white bg-white/10 hover:bg-white/20 border border-white/30 rounded-full transition-colors"
+      >
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</div>

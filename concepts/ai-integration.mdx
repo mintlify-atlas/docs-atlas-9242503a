@@ -1,0 +1,344 @@
+---
+title: "AI Integration"
+description: "How Splat uses Groq's LLM API for intelligent error analysis and debugging"
+---
+
+## Overview
+
+Splat integrates with Groq's inference API to provide AI-powered debugging suggestions. The system uses the `llama3-70b-8192` model with carefully crafted system prompts to analyze error tracebacks and generate structured, actionable debugging advice.
+
+<Info>
+Groq provides fast LLM inference with competitive performance. Splat requires a Groq API key set in the environment variable `API`.
+</Info>
+
+## The Process Function
+
+The main entry point for AI integration is the `process()` function in `process/process.py`:
+
+```python process.py
+def process(traceback_message: str, original_error_information: str, context: str) -> object:
+  client = Groq(api_key=os.getenv("API"))
+
+  chat_completion = client.chat.completions.create(
+    messages=[
+        {
+          "role": "system",
+          "content": "You are an expert software debugging assistant specializing in Python error analysis. Your task is to analyze error tracebacks and provide structured, actionable advice. Follow these steps precisely:"
+        },
+        {
+          "role": "system",
+          "content": "1. Analyze the provided error traceback and original error message.\n2. Identify the source of the error within the repository structure.\n3. Explain the error concisely in natural language.\n4. Provide specific, actionable suggestions for resolving the error.\n5. Format your response as a JSON object with the exact structure specified below."
+        },
+        {
+          "role": "system",
+          "content": "Your response MUST be a valid JSON object with this exact structure:\n{\n  \"where\": {\n    \"repository_path\": \"<absolute path to repository>\",\n    \"file_name\": \"<name of file containing error>\",\n    \"line_number\": \"<line number where error occurred>\"\n  },\n  \"what\": {\n    \"error_type\": \"<specific Python error type>\",\n    \"description\": \"<concise explanation of error>\"\n  },\n  \"how\": {\n    \"error_origination\": \"<line number where error originated>\",\n    \"suggested_code_solution\": \"<code snippet to fix the error>\"\n  }\n}"
+        },
+        {
+          "role": "system",
+          "content": "Constraints:\n- Provide ONLY the JSON object as your response. Do not include any other text.\n- Ensure all JSON keys are exactly as specified.\n- The 'suggested_code_solution' should be a valid Python code snippet without explanation.\n- If multiple errors exist, focus on the most critical one that likely caused the others.\n- Do not use placeholders in your response. Provide specific, contextual information based on the given error. Only fix the line from the line number given that is causing the error."
+        },
+        {
+          "role": "user",
+          "content": f"Context: {context}\n\nTraceback message: {traceback_message}\n\nOriginal error message: {original_error_information}"
+        }
+      ],
+    model="llama3-70b-8192",
+    response_format={"type": "json_object"}
+  )
+  return chat_completion.choices[0].message.content
+```
+
+### Function Parameters
+
+The `process()` function accepts three critical inputs:
+
+- **traceback_message**: The full stderr output captured from subprocess execution
+- **original_error_information**: The stringified error object from `CalledProcessError`
+- **context**: Concatenated contents of all relevant files (from `run_mock_repopack`)
+
+<Note>
+All three parameters are essential for accurate debugging. The traceback provides the error location, the error information gives the error type, and the context supplies the actual code being analyzed.
+</Note>
+
+## System Prompt Engineering
+
+Splat uses a multi-message system prompt strategy with four separate system messages. This approach provides clear, structured instructions to the model:
+
+### Prompt 1: Role Definition
+
+```
+You are an expert software debugging assistant specializing in Python error analysis. 
+Your task is to analyze error tracebacks and provide structured, actionable advice. 
+Follow these steps precisely:
+```
+
+This establishes the AI's role and expertise domain.
+
+### Prompt 2: Analysis Steps
+
+```
+1. Analyze the provided error traceback and original error message.
+2. Identify the source of the error within the repository structure.
+3. Explain the error concisely in natural language.
+4. Provide specific, actionable suggestions for resolving the error.
+5. Format your response as a JSON object with the exact structure specified below.
+```
+
+This breaks down the analysis workflow into discrete steps.
+
+### Prompt 3: Output Schema
+
+```
+Your response MUST be a valid JSON object with this exact structure:
+{
+  "where": {
+    "repository_path": "<absolute path to repository>",
+    "file_name": "<name of file containing error>",
+    "line_number": "<line number where error occurred>"
+  },
+  "what": {
+    "error_type": "<specific Python error type>",
+    "description": "<concise explanation of error>"
+  },
+  "how": {
+    "error_origination": "<line number where error originated>",
+    "suggested_code_solution": "<code snippet to fix the error>"
+  }
+}
+```
+
+This defines the exact structure of the expected response.
+
+<Tip>
+Groq's API supports `response_format={"type": "json_object"}` which ensures the model always returns valid JSON, reducing the need for extensive post-processing.
+</Tip>
+
+### Prompt 4: Constraints and Guardrails
+
+```
+Constraints:
+- Provide ONLY the JSON object as your response. Do not include any other text.
+- Ensure all JSON keys are exactly as specified.
+- The 'suggested_code_solution' should be a valid Python code snippet without explanation.
+- If multiple errors exist, focus on the most critical one that likely caused the others.
+- Do not use placeholders in your response. Provide specific, contextual information based on the given error. 
+- Only fix the line from the line number given that is causing the error.
+```
+
+These constraints prevent common failure modes like:
+- Including explanatory text outside the JSON
+- Using placeholder values instead of specific suggestions
+- Suggesting overly broad changes instead of targeted fixes
+
+## Model Selection
+
+Splat uses the **llama3-70b-8192** model:
+
+```python
+model="llama3-70b-8192"
+```
+
+### Model Characteristics
+
+- **llama3-70b**: Meta's LLaMA 3 70-billion parameter model
+- **8192**: Context window size in tokens
+- **Strengths**: Strong code understanding, instruction following, JSON generation
+
+<Info>
+The 8192 token context window is generally sufficient for error analysis. If you're working with very large files or many dependencies, you might hit token limits. Consider summarizing or truncating context in those cases.
+</Info>
+
+## Response Structure
+
+The AI model returns a structured JSON object with three main sections:
+
+### WHERE: Error Location
+
+```json
+{
+  "where": {
+    "repository_path": "/home/user/project",
+    "file_name": "main.py",
+    "line_number": "42"
+  }
+}
+```
+
+This pinpoints exactly where the error occurred.
+
+### WHAT: Error Description
+
+```json
+{
+  "what": {
+    "error_type": "AttributeError",
+    "description": "Attempting to call 'transform()' method on a None object. The variable 'data' is None, likely because the upstream function failed to return a valid value."
+  }
+}
+```
+
+This explains the error type and root cause in natural language.
+
+### HOW: Fix Suggestion
+
+```json
+{
+  "how": {
+    "error_origination": "42",
+    "suggested_code_solution": "if data is not None:\n    return data.transform()\nelse:\n    raise ValueError('Data cannot be None')"
+  }
+}
+```
+
+This provides actionable code to fix the issue.
+
+<Accordion title="Complete Example Response">
+```json
+{
+  "where": {
+    "repository_path": "/Users/vinh/Documents/calhacks24",
+    "file_name": "test.py",
+    "line_number": "2"
+  },
+  "what": {
+    "error_type": "SyntaxError",
+    "description": "Opening parenthesis '(' was never closed in the print statement"
+  },
+  "how": {
+    "error_origination": "2",
+    "suggested_code_solution": "print(hello)"
+  }
+}
+```
+</Accordion>
+
+## Environment Setup
+
+Splat loads the API key from environment variables using `python-dotenv`:
+
+```python process.py
+from dotenv import load_dotenv
+load_dotenv()
+
+client = Groq(api_key=os.getenv("API"))
+```
+
+<Note>
+You must set the `API` environment variable with your Groq API key. Create a `.env` file in your project root:
+
+```bash
+API=gsk_your_groq_api_key_here
+```
+</Note>
+
+## Response Parsing
+
+The function returns the raw content from the API:
+
+```python
+return chat_completion.choices[0].message.content
+```
+
+This is a JSON string that needs to be parsed by the caller:
+
+```python
+import json
+
+response = process(traceback, error_info, context)
+parsed = json.loads(response)
+
+print(f"Error in {parsed['where']['file_name']} at line {parsed['where']['line_number']}")
+print(f"Fix: {parsed['how']['suggested_code_solution']}")
+```
+
+<Tip>
+Always wrap JSON parsing in a try-except block to handle potential parsing errors gracefully, even though Groq's `json_object` mode should ensure valid JSON.
+</Tip>
+
+## Error Handling
+
+The current implementation doesn't include explicit error handling for API failures. In production, you should add:
+
+```python
+from groq import GroqError
+
+def process(traceback_message: str, original_error_information: str, context: str) -> object:
+  try:
+    client = Groq(api_key=os.getenv("API"))
+    
+    chat_completion = client.chat.completions.create(
+      messages=[...],
+      model="llama3-70b-8192",
+      response_format={"type": "json_object"}
+    )
+    
+    return chat_completion.choices[0].message.content
+  
+  except GroqError as e:
+    return json.dumps({
+      "where": {"repository_path": "", "file_name": "", "line_number": ""},
+      "what": {"error_type": "APIError", "description": f"Groq API error: {str(e)}"},
+      "how": {"error_origination": "", "suggested_code_solution": "Check your API key and connection"}
+    })
+```
+
+## Performance and Costs
+
+### Inference Speed
+
+Groq is known for extremely fast inference times, typically:
+- **Time to first token**: < 100ms
+- **Total response time**: 1-3 seconds for typical debugging queries
+
+### Token Usage
+
+A typical Splat query might consume:
+- **System prompts**: ~300 tokens
+- **Context (3-5 files)**: 1000-3000 tokens
+- **Traceback**: 100-500 tokens
+- **Response**: 200-400 tokens
+
+**Total**: ~2000-4500 tokens per query
+
+<Info>
+Groq's pricing is competitive, but monitor your usage if processing many errors. Consider implementing caching for identical errors to reduce API calls.
+</Info>
+
+## Integration in the Pipeline
+
+The AI integration sits at the end of the error analysis pipeline:
+
+```
+1. Execute command (relational.py)
+   ↓
+2. Capture error (subprocess)
+   ↓
+3. Parse traceback (parse_error_stack)
+   ↓
+4. Build dependency graph (build_adjacency_list)
+   ↓
+5. Collect context (run_mock_repopack)
+   ↓
+6. AI analysis (process) ← YOU ARE HERE
+   ↓
+7. Display results (terminalout/terminal.py)
+```
+
+## Future Enhancements
+
+Potential improvements to the AI integration:
+
+1. **Multi-model support**: Allow users to choose between different LLMs
+2. **Streaming responses**: Display suggestions as they're generated
+3. **Conversation history**: Enable follow-up questions about errors
+4. **Fine-tuning**: Train on project-specific error patterns
+5. **Confidence scores**: Have the model indicate uncertainty
+
+<Tip>
+The structured JSON output format makes it easy to extend Splat's capabilities. You could add additional fields like `"confidence"`, `"alternative_solutions"`, or `"related_issues"` without breaking existing functionality.
+</Tip>
+
+## Next Steps
+
+- Learn about [Error Analysis](/concepts/error-analysis) to understand how errors are captured
+- Explore [Dependency Graphs](/concepts/dependency-graphs) to see how context is collected
